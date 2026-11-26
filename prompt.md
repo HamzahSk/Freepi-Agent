@@ -1,108 +1,125 @@
-Task: Fix Scraping Reliability & Implement WebView-Based Data Extraction
+Task: Fix and Rebuild LK21 Scraper Using Captured Requests & Responses
 
-https://tv13.lk21official.cc/
+The LK21 scraper still has reliability and data extraction issues. Investigate and fix it thoroughly using the captured website traffic stored in the "lk21-request/" directory.
 
-Refactor and debug the existing Freepi Stream application's data extraction system.
+1. Analyze Captured Traffic
 
-1. Architecture Requirements
+First, inspect the entire "lk21-request/" directory.
 
-The source website must ONLY act as a data provider. It must never become part of the application's UI.
+It contains TXT files with actual HTTP requests and responses captured from the LK21 website.
 
-Implement this architecture:
+Use these files as the primary reference to understand:
 
-Website → Android WebView → JavaScript Data Extraction → JSON → Kotlin Repository → Native Application UI.
+- Actual request URLs and endpoints.
+- HTTP methods, headers, cookies, and query parameters.
+- Response formats and content structures.
+- HTML and JavaScript-generated data.
+- Data relationships between catalog, details, providers, and streaming pages.
+- How pagination, search, and filtering work.
 
-WebView is strictly an internal scraping/rendering engine.
+Do not assume the website structure based on old selectors or documentation. Derive the implementation from the captured data.
 
-All application screens, including Home, Catalog, Search, Movie Details, Stream Selection, and Player, must remain fully native.
+2. Rebuild the Data Extraction Logic
 
-2. WebView Scraping Engine
+Fix the scraper to correctly extract and normalize real website data.
 
-Implement a centralized, reusable WebView-based scraping engine.
+Cover all available features:
 
-- Load source pages using Android WebView.
-- Support JavaScript execution and DOM inspection.
-- Extract actual page content using JavaScript DOM selectors.
-- Convert extracted information into structured JSON.
-- Transfer JSON safely to Kotlin using JavascriptInterface or an equivalent bridge.
-- Handle page loading, JavaScript execution, timeouts, redirects, and navigation failures.
-- Properly manage WebView lifecycle and prevent memory leaks.
-- Support multiple scraping tasks without conflicting requests.
-
-Use WebView's built-in Chromium JavaScript engine. Rhino is optional and should only be introduced if a specific requirement justifies it.
-
-3. JSON Data Layer
-
-Create consistent JSON schemas for:
-
-- Home catalog.
-- Movie and series listings.
+- Homepage and featured catalogs.
+- Latest releases and popular titles.
 - Search results.
-- Categories and filters.
+- Categories, genres, and filters.
 - Pagination.
-- Movie details and metadata.
-- Streaming providers.
-- Stream URLs and subtitles.
+- Movie and series details.
+- Metadata, posters, ratings, and descriptions.
+- Streaming provider information.
+- Available stream metadata and subtitles.
 
-Validate extracted JSON before passing it to repositories.
+Ensure each scraper module uses the correct request parameters and response structure.
 
-Keep parsing, normalization, and data models independent from the UI.
+3. Rhino Integration
 
-4. Verify Every Endpoint and Page
+The application uses Rhino for JavaScript-based data extraction.
 
-Audit every existing endpoint and scraping selector.
+Review the existing Rhino implementation and fix it where necessary.
 
-Use desktop Chromium with Playwright to inspect and verify actual website behavior during development.
+- Use Rhino to execute the appropriate extraction scripts.
+- Correctly process captured HTML, JavaScript, and structured responses.
+- Extract dynamic data where applicable.
+- Normalize results into consistent JSON objects.
+- Ensure compatibility between Rhino and Android.
+- Avoid unnecessary JavaScript engine initialization.
+- Handle execution errors and malformed responses safely.
 
-Compare:
+Keep WebView as the browser-rendering layer when actual browser execution is required. Do not confuse Rhino with a full browser environment.
 
-- Actual browser-rendered DOM.
-- Extracted JSON.
-- Kotlin model parsing.
-- Data displayed in the native application.
+4. Request & Response Handling
 
-Test Home, Catalog, Search, Pagination, Details, Providers, and Subtitles individually.
+Reproduce the relevant captured requests in the scraper implementation.
 
-Identify and fix broken selectors, incomplete responses, failed navigation, and inconsistent data structures.
+Verify:
 
-Respect website access restrictions. Do not bypass anti-bot challenges or access controls.
+- Required headers and request parameters.
+- Redirect handling.
+- Response encoding and character sets.
+- Content types.
+- Cookies and session-dependent responses.
+- Empty, malformed, and unexpected responses.
 
-5. Reliability
+Do not hardcode captured response bodies as application data. They are reference fixtures for understanding and testing the actual extraction logic.
 
-- Implement proper loading and completion callbacks.
-- Add request timeouts and controlled retries.
-- Handle malformed HTML and missing elements.
-- Prevent concurrent WebView tasks from interfering with each other.
-- Add structured logging for scraping stages and failures.
-- Never silently return fake or empty data when scraping fails.
-- Provide retryable errors to the native UI.
+Do not bypass authentication, anti-bot challenges, or other access restrictions.
 
-6. Native Application Integration
+5. Testing
 
-Ensure all existing native screens consume data through the repository layer.
+Create automated tests using the captured TXT request/response files wherever possible.
 
-No source website HTML or pages should be displayed to users.
+Test each extraction module against actual captured response samples.
 
-Preserve existing navigation, Compose UI, Media3 player, Room database, caching, favorites, and watch history.
+Verify:
 
-7. Final Testing
+- Correct JSON output.
+- Required fields are populated.
+- Missing fields are handled safely.
+- Pagination works correctly.
+- Search and filtering produce valid results.
+- Details and provider extraction work independently.
 
-Verify the complete flow using real accessible website responses.
+Compare the extracted JSON against the original captured responses.
 
-Run:
+6. Application Integration
+
+Integrate the repaired scraper into the existing repository architecture.
+
+Ensure all native application screens receive correctly structured data.
+
+Preserve existing:
+
+- Jetpack Compose UI.
+- WebView scraping infrastructure.
+- Rhino integration.
+- Media3 player.
+- Room database.
+- Caching and navigation.
+
+Do not rewrite unrelated modules or introduce mock functionality.
+
+7. Final Verification
+
+Run all relevant unit tests and:
 
 "./gradlew testDebugUnitTest"
 
 "./gradlew assembleDebug"
 
-Report:
+Provide a report containing:
 
-- Root causes of scraping and connection failures.
-- Endpoint verification results.
-- Chromium and WebView test results.
-- JSON extraction and validation results.
-- Changes to the architecture.
-- Remaining limitations.
-- Build and test results.
+1. Problems discovered in the old scraper.
+2. Findings from "lk21-request/".
+3. Actual request/response structures identified.
+4. Rhino extraction changes.
+5. Modules and endpoints successfully tested.
+6. Remaining unsupported or inaccessible data.
+7. Build and test results.
 
-Do not rewrite unrelated functionality. Ensure the final implementation is stable and production-ready.
+Important: The "lk21-request/" directory is the primary source of truth for this task. Thoroughly inspect its contents before modifying the scraper. Do not guess endpoint structures, invent selectors, or implement functionality without validating it against the captured data.
