@@ -1,1 +1,1 @@
-Ringkas isi repository ini dalam 5 poin.
+coba bikin game ualr sederhana 

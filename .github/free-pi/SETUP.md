@@ -37,8 +37,9 @@ perlu membuka tab Actions.
   versi sebelumnya (hemat allowance).
 - `prompt.md` kosong = run langsung gagal dengan pesan jelas, bukan memanggil
   model dengan prompt kosong.
-- Model default `deepseek-v4.1-flash`, thinking `low`, karena trigger push tidak
-  punya input. Mau beda? Ganti nilai fallback di step `env:` pada workflow.
+- Model default **`particle`** (Particle-1, gratis), thinking `low`, karena trigger
+  push tidak punya input. Mau beda? Ganti nilai fallback di step `env:` pada
+  workflow, atau set manual saat dispatch.
 
 ### Manual
 
@@ -48,9 +49,28 @@ memakai `prompt.md`, atau isi untuk override sekali jalan.
 Dari CLI:
 
 ```bash
-gh workflow run free-pi.yml -f prompt="Ringkas isi repo ini" -f model=deepseek-v4.1-flash
+gh workflow run free-pi.yml -f prompt="Ringkas isi repo ini" -f model=particle
 gh run watch
 ```
+
+### Hasil: artifact `free-pi-changes`
+
+Setiap run mengumpulkan file yang diubah agent (step "Collect changed files",
+skrip `.github/free-pi/changed-files.py`):
+
+```
+free-pi-changes/
+  files/...            file baru/berubah, folder aslinya ikut (path lengkap)
+  deleted-files.txt    daftar file yang dihapus agent, satu path per baris
+  changed-files.txt    ringkasan "<status> <path>", rename ditulis "(from <path>)"
+```
+
+- Artifact tetap dibuat walau tidak ada perubahan (dua `.txt` kosong) supaya
+  kamu bisa membedakan "agent tidak mengubah apa pun" dari "upload gagal".
+- Daftar file juga ditulis ke job summary, jadi kelihatan tanpa mengunduh.
+- File > 25 MB dilewati dengan `::warning::`; `.gitignore` tidak dipakai sebagai
+  filter, jadi file untracked tetap ikut selama `git status` melihatnya.
+- Artifact hanya berisi **salinan** file; agent tidak commit dan tidak push.
 
 Dari workflow lain:
 
@@ -93,10 +113,16 @@ jadwal `cron` ketat.
 - **Jangan pakai di repo publik dengan PR dari fork** untuk hal sensitif:
   secret tidak dikirim ke fork, dan `pull_request_target` sengaja tidak dipakai di
   contoh ini.
-- **Model pilihan.** Daftar model ada di `.github/free-pi/models.json`. Yang
-  terbaik untuk CI umumnya `deepseek-v4.1-flash` dan `particle` (gratis). Kalau
-  mau menambah model, salin id dari `https://api.freepi.ai/client-version`
-  (`models[].id`) dan jangan lupa `contextWindow`-nya.
+- **Model pilihan.** Daftar model ada di `.github/free-pi/models.json` (27 model,
+  sinkron dengan catalog `https://api.freepi.ai/client-version`). Provider
+  `free-pi` berisi model biasa, `free-pi-defense` berisi model `section: defense`,
+  sama seperti pembagian di free-pi-cli. Default workflow: `particle`
+  (Particle-1, gratis); `deepseek-v4.1-flash` juga gratis untuk tugas besar.
+- **Menyegarkan daftar model.** Jalankan `node .github/free-pi/sync-models.mjs`
+  (atau `node .github/free-pi/sync-models.mjs catalog.json` kalau offline). Skrip
+  itu mengambil id/nama/harga-pemakaian dari catalog dan mengisi `contextWindow`
+  dari tabel yang sama dengan free-pi-cli. Cek hasilnya dengan
+  `pi --list-models` setelah menyalin file ke `$HOME/.pi/agent/models.json`.
 - **Mau model lain di luar daftar itu?** Tambahkan entri baru ke
   `models.json` dengan `"id": "<id-dari-catalog>"`; sisanya samakan.
 - **Allowance harian.** Pemakaian CI ikut memotong allowance akunmu, termasuk

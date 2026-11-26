@@ -1,5 +1,5 @@
 name: free-pi
-run-name: free-pi · ${{ inputs.model || 'deepseek-v4.1-flash' }} · ${{ github.event_name == 'push' && 'prompt.md' || 'manual' }}
+run-name: free-pi · ${{ inputs.model || 'particle' }} · ${{ github.event_name == 'push' && 'prompt.md' || 'manual' }}
 
 # Run free-pi's models from GitHub Actions. The sign-in token lives in the repo
 # secret FREEPI_TOKEN, so nothing is committed.
@@ -31,7 +31,7 @@ on:
         description: free-pi model id
         type: string
         required: false
-        default: deepseek-v4.1-flash
+        default: particle
       thinking:
         description: Thinking level
         type: choice
@@ -56,7 +56,7 @@ on:
       model:
         type: string
         required: false
-        default: deepseek-v4.1-flash
+        default: particle
       thinking:
         type: string
         required: false
@@ -90,7 +90,7 @@ env:
 
 jobs:
   free-pi:
-    name: free-pi ${{ inputs.model || 'deepseek-v4.1-flash' }}
+    name: free-pi ${{ inputs.model || 'particle' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -128,7 +128,7 @@ jobs:
         env:
           FREEPI_TOKEN: ${{ secrets.FREEPI_TOKEN }}
           INPUT_PROMPT: ${{ inputs.prompt }}
-          INPUT_MODEL: ${{ inputs.model || 'deepseek-v4.1-flash' }}
+          INPUT_MODEL: ${{ inputs.model || 'particle' }}
           INPUT_THINKING: ${{ inputs.thinking || 'low' }}
           INPUT_TOOLS: ${{ inputs.tools }}
           INPUT_MODE: ${{ inputs.mode || 'text' }}
@@ -170,6 +170,40 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Collect changed files
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 .github/free-pi/changed-files.py free-pi-changes || {
+            echo "::warning::Could not collect the agent's file changes"
+            mkdir -p free-pi-changes
+            : > free-pi-changes/deleted-files.txt
+            : > free-pi-changes/changed-files.txt
+          }
+          {
+            echo "### Files changed by free-pi"
+            echo
+            if [ -s free-pi-changes/changed-files.txt ]; then
+              echo '````'
+              cat free-pi-changes/changed-files.txt
+              echo '````'
+            else
+              echo "_No file changes._"
+            fi
+            echo
+            echo "### Deleted files"
+            echo
+            if [ -s free-pi-changes/deleted-files.txt ]; then
+              echo '````'
+              cat free-pi-changes/deleted-files.txt
+              echo '````'
+            else
+              echo "_Nothing deleted._"
+            fi
+            echo
+            echo "Download the changed files from the **free-pi-changes** artifact (folder \`files/\`)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Show remaining allowance
         if: always()
         env:
@@ -182,4 +216,14 @@ jobs:
         with:
           name: free-pi-output
           path: free-pi-output.*
+          if-no-files-found: warn
+
+      # The agent's edits, with the same folder layout, plus the list of files it
+      # deleted (deleted-files.txt). Empty runs still upload the two .txt files.
+      - name: Upload changed files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-pi-changes
+          path: free-pi-changes/
           if-no-files-found: warn

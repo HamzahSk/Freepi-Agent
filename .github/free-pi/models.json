@@ -15,91 +15,526 @@
           "id": "particle",
           "name": "Particle-1 (free)",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 420000,
           "maxTokens": 32768,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsDeveloperRole": false }
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
         },
         {
           "id": "deepseek-v4.1-flash",
           "name": "DeepSeek V4.1 Flash (free)",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 420000,
           "maxTokens": 32768,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsDeveloperRole": false }
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
         },
         {
           "id": "glm-5.3-flash",
           "name": "GLM 5.3 Flash (free)",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 420000,
           "maxTokens": 32768,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsDeveloperRole": false }
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
         },
         {
-          "id": "ling-3.1-flash",
-          "name": "Ling 3.1 Flash",
+          "id": "deepseek-v4.1-flash-1017-ultrafast",
+          "name": "DeepSeek V4.1 Flash 600tps · ~1.6x usage",
           "reasoning": true,
-          "input": ["text"],
-          "contextWindow": 420000,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 200000,
           "maxTokens": 32768,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsDeveloperRole": false }
-        },
-        {
-          "id": "qwen3.7-flash",
-          "name": "Qwen 3.7 Flash",
-          "reasoning": true,
-          "input": ["text"],
-          "contextWindow": 185000,
-          "maxTokens": 32768,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsDeveloperRole": false }
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
         },
         {
           "id": "deepseek-v4-pro",
-          "name": "DeepSeek V4 Pro",
+          "name": "DeepSeek V4 Pro · ~5.9x usage",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 420000,
           "maxTokens": 32768,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsDeveloperRole": false }
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "gemini-4-carbon",
+          "name": "Gemini 4 Carbon · ~19x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "gemini-4-hydrogen",
+          "name": "Gemini 4 Hydrogen · ~14x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "gemini-4-neon",
+          "name": "Gemini 4 Neon · ~29x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
         },
         {
           "id": "gpt-6.2-astra",
-          "name": "GPT-6.2 Astra",
+          "name": "GPT-6.2 Astra · ~51x usage",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 195000,
           "maxTokens": 32768,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsDeveloperRole": false }
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
         },
         {
           "id": "gpt-oss-20b",
-          "name": "GPT-OSS 20B",
+          "name": "GPT-OSS 20B · ~0.3x usage",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 131072,
           "maxTokens": 32768,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsDeveloperRole": false }
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "hy4-flash",
+          "name": "Hy4 Flash · ~0.2x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 420000,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "inkling-2-mini",
+          "name": "Inkling 2 Mini · ~0.7x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
         },
         {
           "id": "kimi-k3.1-pro",
-          "name": "Kimi K3.1 Pro",
+          "name": "Kimi K3.1 Pro · ~22x usage · premium credits",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 262144,
           "maxTokens": 32768,
-          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsDeveloperRole": false }
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "ling-3.0-flash",
+          "name": "Ling 3.0 Flash · ~0.2x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "ling-3.1-flash",
+          "name": "Ling 3.1 Flash · ~0.4x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 420000,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "mimo-v2.6-flash",
+          "name": "MiMo V2.6 Flash (Xiaomi) · ~0.8x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "qwen3.5-35b-darkbloom",
+          "name": "Qwen3.5 35B (Darkbloom) · ~2.1x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "qwen3.7-flash",
+          "name": "Qwen 3.7 Flash · ~0.9x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 185000,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "solar-mini-4",
+          "name": "Solar Mini 4 · ~0.4x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 420000,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "solar-pro-4",
+          "name": "Solar Pro 4 · ~1.2x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        }
+      ]
+    },
+    "free-pi-defense": {
+      "name": "free-pi-defense",
+      "baseUrl": "https://api.freepi.ai/v1",
+      "api": "openai-completions",
+      "apiKey": "$FREEPI_TOKEN",
+      "headers": {
+        "x-client-version": "0.6.28",
+        "x-ad-context": "none"
+      },
+      "models": [
+        {
+          "id": "abliterated-large-flash",
+          "name": "Abliterated Large Flash · ~20x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "abliterated-large-v2",
+          "name": "Abliterated Large V2 · ~60x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 200000,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "deepseek-v4.1-flash-abliterated",
+          "name": "DeepSeek V4.1 Flash Abliterated · ~20x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 420000,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "gemma-4-uncensored",
+          "name": "Gemma 4 Uncensored · ~20x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "glm-4.7-flash-heretic",
+          "name": "GLM 4.7 Flash Heretic · ~20x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "qwen3.6-plus-uncensored",
+          "name": "Qwen 3.6 Plus Uncensored · ~37x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
+        },
+        {
+          "id": "uncensored-1.2",
+          "name": "Uncensored 1.2 · ~20x usage",
+          "reasoning": true,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": false
+          }
         }
       ]
     }
