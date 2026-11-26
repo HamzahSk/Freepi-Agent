@@ -36,7 +36,7 @@ on:
         description: Thinking level
         type: choice
         options: [off, low, medium, high]
-        default: low
+        default: medium
       tools:
         description: Tool allowlist, comma separated (empty = pi defaults)
         type: string
@@ -60,7 +60,7 @@ on:
       thinking:
         type: string
         required: false
-        default: low
+        default: medium
       tools:
         type: string
         required: false
@@ -129,7 +129,7 @@ jobs:
           FREEPI_TOKEN: ${{ secrets.FREEPI_TOKEN }}
           INPUT_PROMPT: ${{ inputs.prompt }}
           INPUT_MODEL: ${{ inputs.model || 'particle' }}
-          INPUT_THINKING: ${{ inputs.thinking || 'low' }}
+          INPUT_THINKING: ${{ inputs.thinking || 'medium' }}
           INPUT_TOOLS: ${{ inputs.tools }}
           INPUT_MODE: ${{ inputs.mode || 'text' }}
         run: |

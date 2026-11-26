@@ -1,64 +1,108 @@
-Task: Build a Complete Movie Streaming Application
+Task: Fix Scraping Reliability & Implement WebView-Based Data Extraction
 
-First, inspect and analyze https://tv13.lk21official.cc/ to understand its website structure, available data, and functionality.
+https://tv13.lk21official.cc/
 
-Build a complete movie streaming application using the website strictly as a data source for:
+Refactor and debug the existing Freepi Stream application's data extraction system.
 
-- Movie catalogs and latest releases.
-- Categories, genres, and filters.
-- Search functionality.
-- Movie details, posters, descriptions, ratings, and metadata.
-- Available streaming sources and subtitles, where accessible.
+1. Architecture Requirements
 
-Core Requirements
+The source website must ONLY act as a data provider. It must never become part of the application's UI.
 
-1. Native Application UI/UX
-   
-   - Build the entire UI inside the application.
-   - Do not embed the source website using WebView or simply display its pages.
-   - Create a modern, polished streaming interface with navigation, cards, tables/lists, buttons, loading states, and error handling.
-   - Implement browsing, search, filtering, sorting, and pagination.
+Implement this architecture:
 
-2. Video Player
-   
-   - Implement a native video player with stream decoding and playback handled by the application.
-   - Support fullscreen, landscape mode, playback speed, seeking, quality selection when available, and subtitle selection.
-   - Support external and embedded subtitles whenever possible.
-   - Include playback controls and proper buffering/error handling.
+Website → Android WebView → JavaScript Data Extraction → JSON → Kotlin Repository → Native Application UI.
 
-3. Database & Watch History
-   
-   - Store watch progress, including the exact last playback position.
-   - Automatically save and restore playback progress.
-   - Maintain watch history, favorites, recently watched, and completed movies.
-   - Allow users to resume watching from where they stopped.
+WebView is strictly an internal scraping/rendering engine.
 
-4. Architecture & Performance
-   
-   - Separate data extraction, API/data handling, database, player, and UI into clean modules.
-   - Implement caching to reduce unnecessary requests.
-   - Handle unavailable sources, network errors, and malformed data gracefully.
-   - Ensure responsive UI and smooth playback.
+All application screens, including Home, Catalog, Search, Movie Details, Stream Selection, and Player, must remain fully native.
 
-Important Instructions
+2. WebView Scraping Engine
 
-- Thoroughly inspect the source website before implementation. Understand its actual endpoints, page structure, data formats, and available media sources. Do not assume anything without verification.
-- The website is only a data provider; all application logic, UI/UX, playback controls, and database operations must be implemented independently.
-- Respect applicable copyright, access restrictions, and website terms. Only integrate content and streams that are authorized for use.
-- Do not create mock functionality or placeholder buttons. Every implemented feature must work.
-- Test the complete application flow, from browsing movies to playing videos and restoring playback progress.
+Implement a centralized, reusable WebView-based scraping engine.
 
-First inspect the existing project structure and documentation, then implement the application while preserving unrelated existing functionality.
+- Load source pages using Android WebView.
+- Support JavaScript execution and DOM inspection.
+- Extract actual page content using JavaScript DOM selectors.
+- Convert extracted information into structured JSON.
+- Transfer JSON safely to Kotlin using JavascriptInterface or an equivalent bridge.
+- Handle page loading, JavaScript execution, timeouts, redirects, and navigation failures.
+- Properly manage WebView lifecycle and prevent memory leaks.
+- Support multiple scraping tasks without conflicting requests.
 
-Technology & Build Requirements
+Use WebView's built-in Chromium JavaScript engine. Rhino is optional and should only be introduced if a specific requirement justifies it.
 
-- Build the application as a native Android app using Kotlin.
-- Use Android Studio-compatible Gradle configuration and standard Android architecture.
-- Use Jetpack Compose for the UI (unless the existing project already uses another established UI framework).
-- Use Media3 ExoPlayer for video playback.
-- Implement database storage using Room.
-- Ensure compatibility with the project's existing package name, SDK configuration, and architecture.
-- The project MUST compile into a working APK.
-- Run Gradle build checks, fix all compilation errors, dependency conflicts, and configuration issues.
-- Do not leave unfinished implementations, missing dependencies, or placeholder code.
-- Verify the final build using "./gradlew assembleDebug" and ensure the APK is generated successfully.
+3. JSON Data Layer
+
+Create consistent JSON schemas for:
+
+- Home catalog.
+- Movie and series listings.
+- Search results.
+- Categories and filters.
+- Pagination.
+- Movie details and metadata.
+- Streaming providers.
+- Stream URLs and subtitles.
+
+Validate extracted JSON before passing it to repositories.
+
+Keep parsing, normalization, and data models independent from the UI.
+
+4. Verify Every Endpoint and Page
+
+Audit every existing endpoint and scraping selector.
+
+Use desktop Chromium with Playwright to inspect and verify actual website behavior during development.
+
+Compare:
+
+- Actual browser-rendered DOM.
+- Extracted JSON.
+- Kotlin model parsing.
+- Data displayed in the native application.
+
+Test Home, Catalog, Search, Pagination, Details, Providers, and Subtitles individually.
+
+Identify and fix broken selectors, incomplete responses, failed navigation, and inconsistent data structures.
+
+Respect website access restrictions. Do not bypass anti-bot challenges or access controls.
+
+5. Reliability
+
+- Implement proper loading and completion callbacks.
+- Add request timeouts and controlled retries.
+- Handle malformed HTML and missing elements.
+- Prevent concurrent WebView tasks from interfering with each other.
+- Add structured logging for scraping stages and failures.
+- Never silently return fake or empty data when scraping fails.
+- Provide retryable errors to the native UI.
+
+6. Native Application Integration
+
+Ensure all existing native screens consume data through the repository layer.
+
+No source website HTML or pages should be displayed to users.
+
+Preserve existing navigation, Compose UI, Media3 player, Room database, caching, favorites, and watch history.
+
+7. Final Testing
+
+Verify the complete flow using real accessible website responses.
+
+Run:
+
+"./gradlew testDebugUnitTest"
+
+"./gradlew assembleDebug"
+
+Report:
+
+- Root causes of scraping and connection failures.
+- Endpoint verification results.
+- Chromium and WebView test results.
+- JSON extraction and validation results.
+- Changes to the architecture.
+- Remaining limitations.
+- Build and test results.
+
+Do not rewrite unrelated functionality. Ensure the final implementation is stable and production-ready.
