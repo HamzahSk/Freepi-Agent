@@ -1,0 +1,101 @@
+name: free-pi PR review
+
+# Optional example: review every pull request's diff with free-pi.
+# Uses the same FREEPI_TOKEN secret as .github/workflows/free-pi.yml.
+#
+# Notes
+# - Runs only for pull requests opened from this repository. Pull requests from
+#   forks never receive repository secrets, so they are skipped on purpose.
+# - The review lands in the job summary and as an artifact; nothing is posted to
+#   the pull request itself.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: free-pi-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PI_SKIP_VERSION_CHECK: "1"
+  PI_TELEMETRY: "0"
+  NO_COLOR: "1"
+  CI: "true"
+
+jobs:
+  review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.19.0"
+
+      - name: Install pi
+        run: npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest
+
+      - name: Configure the free-pi provider
+        env:
+          FREEPI_TOKEN: ${{ secrets.FREEPI_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FREEPI_TOKEN:-}" ]; then
+            echo "::error::Secret FREEPI_TOKEN is missing. See .github/free-pi/SETUP.md"
+            exit 1
+          fi
+          echo "::add-mask::${FREEPI_TOKEN}"
+          mkdir -p "$HOME/.pi/agent"
+          install -m 600 .github/free-pi/models.json "$HOME/.pi/agent/models.json"
+          node .github/free-pi/account.mjs
+
+      - name: Collect the diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git diff --no-color "$BASE_SHA...$HEAD_SHA" > diff.txt || true
+          # Keep the diff within a sane size for context and argv limits.
+          head -c 100000 diff.txt > diff-capped.txt
+          wc -c diff.txt diff-capped.txt
+
+      - name: Review
+        env:
+          FREEPI_TOKEN: ${{ secrets.FREEPI_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          pi --print "You are reviewing a pull request titled \"${PR_TITLE}\". The unified diff is on stdin. List only real problems: bugs, security issues, broken edge cases, and missing tests. For each, give file, line and a concrete fix. Say \"no blocking issues\" if there are none. Be concise." \
+            --model free-pi/deepseek-v4.1-flash \
+            --thinking low \
+            --no-approve \
+            --tools read,grep,find,ls \
+            < diff-capped.txt | tee review.md
+          {
+            echo "### free-pi review"
+            echo
+            cat review.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-pi-review
+          path: |
+            review.md
+            diff-capped.txt
+          if-no-files-found: warn

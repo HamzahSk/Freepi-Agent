@@ -1,0 +1,185 @@
+name: free-pi
+run-name: free-pi · ${{ inputs.model || 'deepseek-v4.1-flash' }} · ${{ github.event_name == 'push' && 'prompt.md' || 'manual' }}
+
+# Run free-pi's models from GitHub Actions. The sign-in token lives in the repo
+# secret FREEPI_TOKEN, so nothing is committed.
+#
+# Setup, once, in a terminal:
+#   gh secret set FREEPI_TOKEN --body "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.env.HOME+"/.free-pi/agent/credentials.json","utf8")).token)')"
+# More detail: .github/free-pi/SETUP.md
+#
+# Why `pi` and not `free-pi-cli`: the free-pi CLI is an interactive terminal app
+# (no --print mode, it always opens the TUI), so it cannot run unattended. This
+# workflow therefore runs the same agent binary free-pi is built on, pointed at
+# free-pi's OpenAI-compatible endpoint (https://api.freepi.ai/v1) with your token.
+# Same models, same daily allowance, real headless output.
+
+on:
+  # Auto-run whenever prompt.md changes on any branch. The file's contents become
+  # the prompt, so editing prompt.md is how you drive the agent.
+  push:
+    paths:
+      - prompt.md
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: Prompt override (leave empty to use prompt.md)
+        type: string
+        required: false
+        default: ""
+      model:
+        description: free-pi model id
+        type: string
+        required: false
+        default: deepseek-v4.1-flash
+      thinking:
+        description: Thinking level
+        type: choice
+        options: [off, low, medium, high]
+        default: low
+      tools:
+        description: Tool allowlist, comma separated (empty = pi defaults)
+        type: string
+        required: false
+        default: ""
+      mode:
+        description: Output mode
+        type: choice
+        options: [text, json]
+        default: text
+
+  workflow_call:
+    inputs:
+      prompt:
+        type: string
+        required: true
+      model:
+        type: string
+        required: false
+        default: deepseek-v4.1-flash
+      thinking:
+        type: string
+        required: false
+        default: low
+      tools:
+        type: string
+        required: false
+        default: ""
+      mode:
+        type: string
+        required: false
+        default: text
+    secrets:
+      FREEPI_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+# One run at a time per branch: the daily allowance is shared with your terminal.
+# A new prompt.md commit cancels the run still working on the older prompt.
+concurrency:
+  group: free-pi-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+env:
+  PI_SKIP_VERSION_CHECK: "1"
+  PI_TELEMETRY: "0"
+  NO_COLOR: "1"
+  CI: "true"
+
+jobs:
+  free-pi:
+    name: free-pi ${{ inputs.model || 'deepseek-v4.1-flash' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.19.0"
+
+      - name: Install pi
+        run: |
+          npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest
+          pi --version
+
+      - name: Configure the free-pi provider
+        env:
+          FREEPI_TOKEN: ${{ secrets.FREEPI_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FREEPI_TOKEN:-}" ]; then
+            echo "::error::Secret FREEPI_TOKEN is missing. See .github/free-pi/SETUP.md"
+            exit 1
+          fi
+          # Mask the token before any command could echo it.
+          echo "::add-mask::${FREEPI_TOKEN}"
+          mkdir -p "$HOME/.pi/agent"
+          install -m 600 .github/free-pi/models.json "$HOME/.pi/agent/models.json"
+          node .github/free-pi/account.mjs
+
+      - name: Run the agent
+        env:
+          FREEPI_TOKEN: ${{ secrets.FREEPI_TOKEN }}
+          INPUT_PROMPT: ${{ inputs.prompt }}
+          INPUT_MODEL: ${{ inputs.model || 'deepseek-v4.1-flash' }}
+          INPUT_THINKING: ${{ inputs.thinking || 'low' }}
+          INPUT_TOOLS: ${{ inputs.tools }}
+          INPUT_MODE: ${{ inputs.mode || 'text' }}
+        run: |
+          set -euo pipefail
+          ext=txt
+          args=(--model "free-pi/${INPUT_MODEL}" --thinking "$INPUT_THINKING" --no-approve)
+          if [ -n "${INPUT_TOOLS}" ]; then
+            args+=(--tools "$INPUT_TOOLS")
+          fi
+          if [ "${INPUT_MODE}" = "json" ]; then
+            args+=(--mode json)
+            ext=jsonl
+          fi
+
+          # Prompt resolution: dispatch input wins, otherwise prompt.md.
+          prompt="${INPUT_PROMPT:-}"
+          if [ -z "$prompt" ]; then
+            if [ ! -s prompt.md ]; then
+              echo "::error::No prompt given and prompt.md is missing or empty."
+              exit 1
+            fi
+            prompt="$(cat prompt.md)"
+            echo "Using prompt.md ($(wc -c < prompt.md) bytes)"
+          fi
+          if [ "${#prompt}" -gt 100000 ]; then
+            echo "::error::Prompt is larger than 100000 characters; split it or pass a shorter prompt."
+            exit 1
+          fi
+
+          pi --print "$prompt" "${args[@]}" | tee "free-pi-output.${ext}"
+          if [ -s "free-pi-output.${ext}" ]; then
+            {
+              echo "### free-pi / ${INPUT_MODEL}"
+              echo
+              echo '````'
+              cat "free-pi-output.${ext}"
+              echo '````'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Show remaining allowance
+        if: always()
+        env:
+          FREEPI_TOKEN: ${{ secrets.FREEPI_TOKEN }}
+        run: node .github/free-pi/account.mjs || true
+
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-pi-output
+          path: free-pi-output.*
+          if-no-files-found: warn

@@ -1,0 +1,107 @@
+{
+  "$schema": "https://pi.dev/schemas/models.schema.json",
+  "providers": {
+    "free-pi": {
+      "name": "free-pi",
+      "baseUrl": "https://api.freepi.ai/v1",
+      "api": "openai-completions",
+      "apiKey": "$FREEPI_TOKEN",
+      "headers": {
+        "x-client-version": "0.6.28",
+        "x-ad-context": "none"
+      },
+      "models": [
+        {
+          "id": "particle",
+          "name": "Particle-1 (free)",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 420000,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "compat": { "supportsDeveloperRole": false }
+        },
+        {
+          "id": "deepseek-v4.1-flash",
+          "name": "DeepSeek V4.1 Flash (free)",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 420000,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "compat": { "supportsDeveloperRole": false }
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "GLM 5.3 Flash (free)",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 420000,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "compat": { "supportsDeveloperRole": false }
+        },
+        {
+          "id": "ling-3.1-flash",
+          "name": "Ling 3.1 Flash",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 420000,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "compat": { "supportsDeveloperRole": false }
+        },
+        {
+          "id": "qwen3.7-flash",
+          "name": "Qwen 3.7 Flash",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 185000,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "compat": { "supportsDeveloperRole": false }
+        },
+        {
+          "id": "deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 420000,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "compat": { "supportsDeveloperRole": false }
+        },
+        {
+          "id": "gpt-6.2-astra",
+          "name": "GPT-6.2 Astra",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 195000,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "compat": { "supportsDeveloperRole": false }
+        },
+        {
+          "id": "gpt-oss-20b",
+          "name": "GPT-OSS 20B",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 131072,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "compat": { "supportsDeveloperRole": false }
+        },
+        {
+          "id": "kimi-k3.1-pro",
+          "name": "Kimi K3.1 Pro",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "compat": { "supportsDeveloperRole": false }
+        }
+      ]
+    }
+  }
+}
