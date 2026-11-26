@@ -1,5 +1,6 @@
 package com.freepi.lk21.data
 
+import android.util.Log
 import com.freepi.lk21.core.TtlCache
 import com.freepi.lk21.data.local.AppDatabase
 import com.freepi.lk21.data.local.FavoriteEntity
@@ -9,27 +10,34 @@ import com.freepi.lk21.data.model.ListPage
 import com.freepi.lk21.data.model.MovieDetail
 import com.freepi.lk21.data.model.ResolvedStream
 import com.freepi.lk21.data.model.StreamSource
+import com.freepi.lk21.data.remote.AccessBlockedException
 import com.freepi.lk21.data.remote.Lk21Client
-import com.freepi.lk21.data.remote.Lk21Parser
-import com.freepi.lk21.data.remote.ParseException
-import com.freepi.lk21.data.remote.StreamResolver
-import kotlinx.coroutines.Dispatchers
+import com.freepi.lk21.data.remote.SourceException
+import com.freepi.lk21.data.scrape.CatalogDataSource
+import com.freepi.lk21.data.scrape.StreamProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
-import java.net.URLEncoder
-import java.util.Locale
 
 /**
- * Single place that combines the remote catalog, the stream resolver and the
- * local Room database. UI layers only ever talk to this class.
+ * Single place that combines the remote catalog (WebView scraping engine, with
+ * an HTTP fallback for WebView-less devices), the stream resolver and the local
+ * Room database. UI layers only ever talk to this class.
  */
 class MovieRepository(
+    private val catalog: CatalogDataSource,
+    private val fallbackCatalog: CatalogDataSource?,
+    private val streamProvider: StreamProvider,
     private val client: Lk21Client,
-    private val parser: Lk21Parser,
-    private val resolver: StreamResolver,
     private val database: AppDatabase,
 ) {
+
+    companion object {
+        private const val TAG = "FreepiRepository"
+        private const val TTL_HOME = 10 * 60_000L
+        private const val TTL_LIST = 5 * 60_000L
+        private const val TTL_DETAIL = 15 * 60_000L
+    }
 
     private val homeCache = TtlCache<String, HomeData>(maxEntries = 2)
     private val listCache = TtlCache<String, ListPage>(maxEntries = 120)
@@ -42,12 +50,8 @@ class MovieRepository(
 
     suspend fun home(forceRefresh: Boolean = false): HomeData {
         if (!forceRefresh) homeCache.get("home")?.let { return it }
-        val doc = client.fetchDocument("/", forceRefresh, ttlMillis = 10 * 60_000L)
-        val home = parser.parseHome(doc)
-        if (home.latest.isEmpty() && home.popular.isEmpty() && home.recommended.isEmpty()) {
-            throw ParseException("The source returned a page without recognizable movie cards.")
-        }
-        homeCache.put("home", home, 10 * 60_000L)
+        val home = fromCatalog { it.home(forceRefresh) }
+        homeCache.put("home", home, TTL_HOME)
         return home
     }
 
@@ -55,39 +59,59 @@ class MovieRepository(
     suspend fun list(pathOrUrl: String, forceRefresh: Boolean = false): ListPage {
         val key = pathOrUrl
         if (!forceRefresh) listCache.get(key)?.let { return it }
-        val doc = client.fetchDocument(pathOrUrl, forceRefresh, ttlMillis = 5 * 60_000L)
-        val page = Regex("""/page/(\d+)""").find(doc.baseUri())?.groupValues?.get(1)?.toIntOrNull() ?: 1
-        val parsed = parser.parseList(doc, page)
-        listCache.put(key, parsed, 5 * 60_000L)
-        return parsed
+        val page = fromCatalog { it.list(pathOrUrl, forceRefresh) }
+        listCache.put(key, page, TTL_LIST)
+        return page
     }
 
-    suspend fun search(query: String, forceRefresh: Boolean = false): ListPage {
-        val encoded = URLEncoder.encode(query.trim(), "UTF-8")
-        return list("/search.php?s=$encoded", forceRefresh)
-    }
+    suspend fun search(query: String, forceRefresh: Boolean = false): ListPage =
+        fromCatalog { it.search(query, forceRefresh) }
 
     suspend fun detail(slugOrUrl: String, forceRefresh: Boolean = false): MovieDetail {
-        val url = if (slugOrUrl.startsWith("http")) slugOrUrl else "/$slugOrUrl/"
+        val url = if (slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/$slugOrUrl/")
         if (!forceRefresh) detailCache.get(url)?.let { return it }
-        val doc = client.fetchDocument(url, forceRefresh, ttlMillis = 15 * 60_000L)
-        val detail = parser.parseDetail(doc, client.absolute(url))
-        if (detail.title.isBlank()) {
-            throw ParseException("Could not read the movie details. The source layout may have changed.")
-        }
-        detailCache.put(url, detail, 15 * 60_000L)
+        val detail = fromCatalog { it.detail(url, forceRefresh) }
+        detailCache.put(url, detail, TTL_DETAIL)
         return detail
     }
 
-    suspend fun resolve(detail: MovieDetail, source: StreamSource): ResolvedStream = withContext(Dispatchers.IO) {
-        resolver.resolve(source, detail.url).copy(provider = source.provider, label = source.label)
-    }
+    suspend fun resolve(detail: MovieDetail, source: StreamSource): ResolvedStream =
+        streamProvider.resolve(detail, source)
+            .copy(provider = source.provider, label = source.label)
 
     fun clearCaches() {
         homeCache.clear()
         listCache.clear()
         detailCache.clear()
         client.clearCache()
+    }
+
+    /**
+     * Runs a catalog request against the WebView engine first; if that path
+     * fails with anything except a bot challenge, falls back to the HTTP path
+     * so the UI can still show data on devices without System WebView.
+     */
+    private suspend fun <T> fromCatalog(block: suspend (CatalogDataSource) -> T): T {
+        try {
+            return block(catalog)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: AccessBlockedException) {
+            // A bot challenge is an access control: report it, do not bypass it.
+            throw e
+        } catch (e: SourceException) {
+            val fallback = fallbackCatalog
+            if (fallback == null) throw e
+            Log.w(TAG, "WebView scraping failed (${e.message}); using HTTP fallback.")
+            try {
+                return block(fallback)
+            } catch (f: CancellationException) {
+                throw f
+            } catch (f: Throwable) {
+                e.addSuppressed(f)
+                throw e
+            }
+        }
     }
 
     // ------------------------------------------------------------- library
@@ -162,14 +186,5 @@ class MovieRepository(
             )
             true
         }
-    }
-
-    fun formatTime(ms: Long): String {
-        val totalSeconds = (ms / 1000).coerceAtLeast(0)
-        val h = totalSeconds / 3600
-        val m = (totalSeconds % 3600) / 60
-        val sec = totalSeconds % 60
-        return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, sec)
-        else String.format(Locale.US, "%d:%02d", m, sec)
     }
 }

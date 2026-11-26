@@ -1,8 +1,10 @@
 package com.freepi.lk21.data.remote
 
+import com.freepi.lk21.data.model.MovieDetail
 import com.freepi.lk21.data.model.ResolvedStream
 import com.freepi.lk21.data.model.StreamSource
 import com.freepi.lk21.data.model.SubtitleTrack
+import com.freepi.lk21.data.scrape.StreamProvider
 import java.net.URI
 import java.util.Base64
 import java.util.Locale
@@ -18,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
  * those layers (bounded depth), unpack JS, collect subtitle tracks and return
  * the first URL with a recognizable media extension.
  */
-class StreamResolver(private val client: Lk21Client) {
+class StreamResolver(private val client: Lk21Client) : StreamProvider {
 
     companion object {
         private val MEDIA_EXT = Regex("""\.(m3u8|mp4|m4v|webm|mpd|mov)(\?|#|$)""", RegexOption.IGNORE_CASE)
@@ -30,6 +32,9 @@ class StreamResolver(private val client: Lk21Client) {
     }
 
     private val resolutionCache = ConcurrentHashMap<String, ResolvedStream>()
+
+    override suspend fun resolve(detail: MovieDetail, source: StreamSource): ResolvedStream =
+        resolve(source, detail.url)
 
     suspend fun resolve(source: StreamSource, pageUrl: String): ResolvedStream {
         resolutionCache[source.embedUrl]?.let { return it }

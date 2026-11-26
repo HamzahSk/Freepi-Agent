@@ -40,32 +40,87 @@ app/src/main/java/com/freepi/lk21/
   Lk21App.kt            Manual DI container
 ```
 
+## Data flow
+
+```
+site (data provider only)
+   -> hidden Android WebView (Chromium, never shown)
+   -> injected DOM extraction JavaScript (assets/scrape/*.js)
+   -> validated JSON (freepi.*.v1 schemas)
+   -> Kotlin models (repository layer)
+   -> native Compose UI (Home / Browse / Search / Detail / Player)
+```
+
+The WebView is purely an internal scraping/rendering engine: it is never
+attached to the view hierarchy, images are blocked, every task gets a fresh
+WebView that is destroyed afterwards, and tasks are serialised so screens never
+interfere with each other. All screens remain 100% native Compose; the site's
+HTML is never rendered to the user.
+
+- `data/scrape/WebViewScrapeEngine.kt` – centralised engine (timeouts, retries,
+  redirects, challenge detection, lifecycle, mutex-serialised tasks).
+- Extraction selectors live in `app/src/main/assets/scrape/*.js`.
+- `data/scrape/ScrapeValidator.kt` – JSON schema validation gate.
+- `data/scrape/ScrapeMapper.kt` – JSON → model normalisation, UI-independent.
+- `data/scrape/WebViewStreamResolver.kt` – embed → media URL resolution in the
+  same hidden WebView (falls back to the legacy HTTP resolver).
+- `tools/scrape-verify/` – Playwright harness that runs the exact shipped
+  extractor scripts against realistic fixtures and probes the live host.
+
+## Project layout
+
+```
+app/src/main/java/com/freepi/lk21/
+  core/                 TTL cache, UI error mapping
+  data/
+    model/              Immutable catalog/detail/stream models
+    scrape/             WebView engine, JSON schemas/validation, mapper, data sources
+    remote/             HTTP fallback client, HTML parser, stream resolver, JS unpacker
+    local/              Room entities, DAOs, database
+    MovieRepository.kt  Single data facade for UI
+  player/ (inside viewmodel) Media3 player state/controls
+  ui/
+    components/         Shared Compose cards, grids, states
+    screens/            Home, Browse, Search, Detail, Player, Library
+    viewmodel/          Screen state holders
+    theme/              Dark cinema theme
+  AppRoot.kt            Navigation + bottom bar
+  Lk21App.kt            Manual DI container
+```
+
 ## Data source analysis
 
 The live host (`https://tv13.lk21official.cc/`) is protected by a Cloudflare
-managed challenge, so its structure was verified against archived copies of the
-same site. Verified endpoints and markup:
+managed challenge and answers **HTTP 403 / "Tunggu sebentar..."** to desktop
+Chromium, curl and the app alike (verified with Playwright – see below). The
+app does not attempt to bypass it: it surfaces a clear retryable error.
+
+The extractors therefore support both the classic theme (`article` cards,
+`#populer`, `#pagination`, `#movie-detail`, `#loadProviders`) and the current
+theme documented by public scrapers of the same site line (`li.slider` cards,
+`.widget[data-type="latest-movies"]`, `.gallery-grid`, `#player-list li a`,
+`#watch-history-data`, `.detail p`, `.synopsis`, `/genre/...` tags):
 
 | Purpose | Endpoint / selector |
 | --- | --- |
-| Home catalog | `/` → `section#populer`, `#latest`, `#recomendation`, `#series-unggulan` |
-| Cards | `article.widget-item` / `.mega-item` / `.featured-item`, `a[rel=bookmark]`, `.grid-poster img`, `.rating`, `.quality`, `.duration` |
-| Pagination | `/page/N/`, `#pagination` (`Halaman X dari Y`), `a.next.page-numbers` |
-| Genre/country/year/quality | `/genre/{slug}/`, `/country/{slug}/`, `/year/{year}/`, `/quality/{q}/` |
+| Home catalog | `/` → `.widget[data-type]`, `#populer`, `#latest`, `#recomendation`, `#series-unggulan` |
+| Cards | `article`, `li.slider`, `.mega-item`, `.search-item`, `a[rel=bookmark]`, `a[itemprop=url]`, `.poster img` |
+| Pagination | `/page/N/`, `#pagination`/`.pagination`, `a.next.page-numbers` |
+| Genre/country/year/quality | `/genre/{slug}/`, `/country/{slug}/`, `/year/{y}/`, `/quality/{q}/` |
 | Ordering | `/latest/`, `/populer/`, `/rating/`, `/release/`, `/latest-series/` |
-| Search | `/search.php?s={query}` |
-| Details | `/{slug}/`, `script[type=application/ld+json]` (`@type: Movie`) and `#movie-detail` |
-| Providers | `#loadProviders li a` (embed host + quality labels) |
+| Search | `/?s={q}` (and `search.php?s={q}` fallback) |
+| Details | `/{slug}/`, `#watch-history-data`, `script[type=application/ld+json]` (`Movie`), `#movie-detail`, `.detail p`, `.synopsis`, `.tag-list` |
+| Providers | `#player-list li a[data-url]`, `#loadProviders li a`, `.player-list li a` (embed host + quality labels) |
 | Subtitles | `.srt` / `.vtt` URLs in detail/provider pages and HLS `EXT-X-MEDIA` |
 
-Provider embeds are resolved natively: the app follows wrapper iframes, scans
-`<video>/<source>/file:/sources:` fields, decodes `atob` blobs, unpacks the
-classic `eval(function(p,a,c,k,e,d))` JS packer and parses HLS subtitle playlists.
-No WebView is used anywhere in the app.
+Provider embeds are resolved inside the hidden WebView (JS-created `<video>`
+tags and script objects are captured), with a legacy HTTP fallback that follows
+wrapper iframes, decodes `atob` blobs, unpacks the classic
+`eval(function(p,a,c,k,e,d))` packer and parses HLS subtitle playlists.
 
-> The app respects the source's access controls. If the host answers with an
-> anti-bot challenge or is unreachable, the UI shows a clear retryable error
-> instead of pretending to have data. Only publicly listed content is consumed.
+The app respects the source's access controls. If the host answers with an
+anti-bot challenge or is unreachable, the UI shows a clear retryable error
+instead of pretending to have data. Only publicly listed content is consumed.
 
 ## Build
 

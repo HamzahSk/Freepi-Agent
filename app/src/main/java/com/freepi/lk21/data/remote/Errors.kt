@@ -14,3 +14,10 @@ class AccessBlockedException(
 class ParseException(message: String, cause: Throwable? = null) : SourceException(message, cause)
 
 class StreamResolutionException(message: String, cause: Throwable? = null) : SourceException(message, cause)
+
+/** The hidden WebView did not finish a scrape within its time budget. */
+class ScrapeTimeoutException(message: String, cause: Throwable? = null) : SourceException(message, cause)
+
+/** The device ships without a usable Android System WebView (rare, but possible). */
+class WebViewUnavailableException(message: String, cause: Throwable? = null) :
+    SourceException(message, cause)

@@ -83,6 +83,16 @@ class Lk21Client(cacheDir: File) {
         return if (pathOrUrl.startsWith("/")) base + pathOrUrl else "$base/$pathOrUrl"
     }
 
+    /** Update the working base host after a successful page load/resolve. */
+    fun noteWorkingBase(finalUrl: String) {
+        if (finalUrl.isBlank()) return
+        runCatching {
+            val u = URL(finalUrl)
+            val base = "${u.protocol}://${u.host}"
+            if (u.host.isNotBlank()) activeBase = base
+        }
+    }
+
     /** Candidates for a URL: the URL itself followed by the same path on other mirrors. */
     private fun candidates(pathOrUrl: String): List<String> {
         if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {

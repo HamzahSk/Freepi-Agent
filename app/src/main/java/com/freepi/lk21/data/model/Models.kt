@@ -84,6 +84,8 @@ data class MovieDetail(
     val sources: List<StreamSource>,
     val subtitles: List<SubtitleTrack>,
     val related: List<MovieCard>,
+    /** Series pages may redirect to the actual episode/show host. */
+    val redirectUrl: String? = null,
 )
 
 /** A resolved, directly playable media URL. */
