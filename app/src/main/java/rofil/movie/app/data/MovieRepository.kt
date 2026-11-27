@@ -33,6 +33,10 @@ class MovieRepository(
     private val streamProvider: StreamProvider,
     private val client: Lk21Client,
     private val database: AppDatabase,
+    private val movieBoxCatalog: CatalogDataSource? = null,
+    private val movieBoxStreamProvider: StreamProvider? = null,
+    private val selectedSource: () -> String = { SourceSelection.LK21 },
+    private val storeSelectedSource: (String) -> Unit = {},
 ) {
 
     companion object {
@@ -46,7 +50,7 @@ class MovieRepository(
     private val listCache = TtlCache<String, ListPage>(maxEntries = 120)
     private val detailCache = TtlCache<String, MovieDetail>(maxEntries = 80)
 
-    private val homeFlight = SingleFlight<Boolean, HomeData>()
+    private val homeFlight = SingleFlight<Pair<String, Boolean>, HomeData>()
     private val listFlight = SingleFlight<Pair<String, Boolean>, ListPage>()
     private val detailFlight = SingleFlight<Pair<String, Boolean>, MovieDetail>()
     private val streamFlight = SingleFlight<Pair<String, StreamSource>, ResolvedStream>()
@@ -54,49 +58,65 @@ class MovieRepository(
     private val progressDao = database.watchProgressDao()
     private val favoriteDao = database.favoriteDao()
 
+    val selectedSourceId: String get() = selectedSource().takeIf { it in SourceSelection.SOURCE_IDS } ?: SourceSelection.LK21
+
+    fun selectSource(id: String) {
+        require(id in SourceSelection.SOURCE_IDS) { "Unknown movie source" }
+        if (id == selectedSourceId) return
+        storeSelectedSource(id)
+        clearCaches()
+    }
+
     // ------------------------------------------------------------- catalog
 
     suspend fun home(forceRefresh: Boolean = false): HomeData {
-        if (!forceRefresh) homeCache.get("home")?.let { cacheHit(ScrapeKind.HOME); return it }
-        return homeFlight.run(forceRefresh) {
-            if (!forceRefresh) homeCache.get("home")?.let { return@run it }
-            fromCatalog { it.home(forceRefresh) }.also { homeCache.put("home", it, TTL_HOME) }
+        val source = selectedSourceId
+        val key = "home:$source"
+        if (!forceRefresh) homeCache.get(key)?.let { cacheHit(ScrapeKind.HOME); return it }
+        return homeFlight.run(source to forceRefresh) {
+            if (!forceRefresh) homeCache.get(key)?.let { return@run it }
+            fromCatalog(source) { it.home(forceRefresh) }.also { homeCache.put(key, it, TTL_HOME) }
         }
     }
 
     /** Load a catalog path like "/genre/action/" or an absolute/paginated URL. */
     suspend fun list(pathOrUrl: String, forceRefresh: Boolean = false): ListPage {
-        val key = client.absolute(pathOrUrl)
+        val source = selectedSourceId
+        val key = "$source:${if (source == SourceSelection.MOVIEBOX) pathOrUrl else client.absolute(pathOrUrl)}"
         if (!forceRefresh) listCache.get(key)?.let { cacheHit(ScrapeKind.LIST); return it }
         return listFlight.run(key to forceRefresh) {
             if (!forceRefresh) listCache.get(key)?.let { return@run it }
-            fromCatalog { it.list(pathOrUrl, forceRefresh) }.also { listCache.put(key, it, TTL_LIST) }
+            fromCatalog(source) { it.list(pathOrUrl, forceRefresh) }.also { listCache.put(key, it, TTL_LIST) }
         }
     }
 
     suspend fun search(query: String, forceRefresh: Boolean = false): ListPage {
+        val source = selectedSourceId
         val normalized = query.trim()
-        val key = "search:$normalized"
+        val key = "$source:search:$normalized"
         if (!forceRefresh) listCache.get(key)?.let { cacheHit(ScrapeKind.LIST); return it }
         return listFlight.run(key to forceRefresh) {
             if (!forceRefresh) listCache.get(key)?.let { return@run it }
-            fromCatalog { it.search(normalized, forceRefresh) }.also { listCache.put(key, it, TTL_LIST) }
+            fromCatalog(source) { it.search(normalized, forceRefresh) }.also { listCache.put(key, it, TTL_LIST) }
         }
     }
 
     suspend fun detail(slugOrUrl: String, forceRefresh: Boolean = false): MovieDetail {
-        val url = if (slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/${slugOrUrl.trim('/')}/")
-        if (!forceRefresh) detailCache.get(url)?.let { cacheHit(ScrapeKind.DETAIL); return it }
+        val source = selectedSourceId
+        val url = if (source == SourceSelection.MOVIEBOX || slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/${slugOrUrl.trim('/')}/")
+        val key = "$source:$url"
+        if (!forceRefresh) detailCache.get(key)?.let { cacheHit(ScrapeKind.DETAIL); return it }
         return detailFlight.run(url to forceRefresh) {
-            if (!forceRefresh) detailCache.get(url)?.let { return@run it }
-            fromCatalog { it.detail(url, forceRefresh) }.also { detailCache.put(url, it, TTL_DETAIL) }
+            if (!forceRefresh) detailCache.get(key)?.let { return@run it }
+            fromCatalog(source) { it.detail(url, forceRefresh) }.also { detailCache.put("$source:$url", it, TTL_DETAIL) }
         }
     }
 
     suspend fun resolve(detail: MovieDetail, source: StreamSource): ResolvedStream =
         streamFlight.run(detail.url to source) {
-            streamProvider.resolve(detail, source)
-                .copy(provider = source.provider, label = source.label)
+            val resolver = if (source.sourceId == SourceSelection.MOVIEBOX) movieBoxStreamProvider ?: streamProvider
+                else streamProvider
+            resolver.resolve(detail, source).copy(provider = source.provider, label = source.label)
         }
 
     private fun cacheHit(kind: ScrapeKind) = ScrapeLogger.stage("catalog", kind, "cache", detail = "model hit")
@@ -112,16 +132,17 @@ class MovieRepository(
      * Runs a catalog request against the lightweight parser first; unsupported
      * layouts fall back to browser execution. Challenges always propagate.
      */
-    private suspend fun <T> fromCatalog(block: suspend (CatalogDataSource) -> T): T {
+    private suspend fun <T> fromCatalog(sourceId: String = selectedSourceId, block: suspend (CatalogDataSource) -> T): T {
+        val primary = if (sourceId == SourceSelection.MOVIEBOX) movieBoxCatalog ?: catalog else catalog
         try {
-            return block(catalog)
+            return block(primary)
         } catch (e: CancellationException) {
             throw e
         } catch (e: AccessBlockedException) {
             // A bot challenge is an access control: report it, do not bypass it.
             throw e
         } catch (e: SourceException) {
-            val fallback = fallbackCatalog
+            val fallback = if (sourceId == SourceSelection.MOVIEBOX) null else fallbackCatalog
             if (fallback == null) throw e
             Log.w(TAG, "Primary catalog failed (${e.javaClass.simpleName}); using fallback.")
             try {

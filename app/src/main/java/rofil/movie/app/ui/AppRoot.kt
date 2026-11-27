@@ -17,6 +17,9 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -59,6 +62,7 @@ fun AppRoot() {
     val navController = rememberNavController()
     val container = rememberContainer()
     val context = LocalContext.current
+    var selectedSource by remember(container) { mutableStateOf(container.sourceSelection.selectedId) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = currentRoute in setOf(Routes.HOME, Routes.SEARCH, Routes.LIBRARY)
@@ -118,6 +122,14 @@ fun AppRoot() {
                     onBrowse = { path, title -> navController.navigateBrowse(path, title) },
                     onSearch = { navigateTab(navController, Routes.SEARCH) },
                     onRefresh = vm::refresh,
+                    sourceId = selectedSource,
+                    onSourceSelect = { sourceId ->
+                        if (sourceId != selectedSource) {
+                            container.repository.selectSource(sourceId)
+                            selectedSource = sourceId
+                            vm.refresh()
+                        }
+                    },
                 )
             }
 

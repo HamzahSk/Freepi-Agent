@@ -35,6 +35,11 @@ class ScrapeScriptLoader(context: Context) {
             ?: throw ParseException("The source registry has no LK21 common script. Retry after the registry is updated.")
         val common = loadScript(commonPath)
         val page = loadScript(path)
+        val streamObserver = if (request.kind == ScrapeKind.STREAM) {
+            source.optJSONObject("scripts")?.optString("streamObserver")
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::loadScript)
+        } else null
         return buildString {
             append("window.__freepiRequestId=").append(JSONObject.quote(requestId)).append(";\n")
             append("window.__freepiRequestUrl=").append(JSONObject.quote(request.url)).append(";\n")
@@ -43,6 +48,7 @@ class ScrapeScriptLoader(context: Context) {
             append("window.__freepiTimeoutMs=").append((request.timeoutMs - 1_000).coerceAtLeast(1)).append(";\n")
             append("window.__freepiDeadline=").append(System.currentTimeMillis() + request.timeoutMs - 1_000).append(";\n")
             append(common).append('\n').append(page)
+            streamObserver?.let { append('\n').append(it) }
         }
     }
 

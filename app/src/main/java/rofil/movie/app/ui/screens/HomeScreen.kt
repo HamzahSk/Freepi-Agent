@@ -24,11 +24,15 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -65,10 +69,12 @@ fun HomeScreen(
     onBrowse: (path: String, title: String) -> Unit,
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
+    sourceId: String = "lk21",
+    onSourceSelect: (String) -> Unit = {},
 ) {
     when {
         state.loading -> HomeSkeleton(
-            header = { BrandBar(false, onSearch, onRefresh) },
+            header = { BrandBar(false, onSearch, onRefresh, sourceId, onSourceSelect) },
             continueWatching = {
                 if (continueWatching.isNotEmpty()) {
                     SectionHeader("Continue watching")
@@ -91,6 +97,8 @@ fun HomeScreen(
             onBrowse = onBrowse,
             onSearch = onSearch,
             onRefresh = onRefresh,
+            sourceId = sourceId,
+            onSourceSelect = onSourceSelect,
         )
     }
 }
@@ -105,6 +113,8 @@ private fun HomeContent(
     onBrowse: (String, String) -> Unit,
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
+    sourceId: String,
+    onSourceSelect: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -115,6 +125,8 @@ private fun HomeContent(
                 refreshing = refreshing,
                 onSearch = onSearch,
                 onRefresh = onRefresh,
+                sourceId = sourceId,
+                onSourceSelect = onSourceSelect,
             )
         }
         data.featured.firstOrNull()?.let { featured ->
@@ -227,7 +239,10 @@ private fun BrandBar(
     refreshing: Boolean,
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
+    sourceId: String,
+    onSourceSelect: (String) -> Unit,
 ) {
+    val expanded = remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -257,11 +272,23 @@ private fun BrandBar(
                 letterSpacing = 2.sp,
             )
             Text(
-                "STREAM",
+                if (sourceId == "moviebox") "MOVIEBOX" else "LK21",
                 style = MaterialTheme.typography.labelSmall,
                 color = Primary,
                 letterSpacing = 3.sp,
             )
+        }
+        Box {
+            Text(
+                "Source ▾",
+                color = Primary,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.clickable { expanded.value = true }.padding(horizontal = 8.dp, vertical = 10.dp),
+            )
+            DropdownMenu(expanded = expanded.value, onDismissRequest = { expanded.value = false }) {
+                DropdownMenuItem(text = { Text("LK21") }, onClick = { expanded.value = false; onSourceSelect("lk21") })
+                DropdownMenuItem(text = { Text("MovieBox") }, onClick = { expanded.value = false; onSourceSelect("moviebox") })
+            }
         }
         if (refreshing) {
             CircularProgressIndicator(

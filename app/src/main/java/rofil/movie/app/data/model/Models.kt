@@ -51,6 +51,11 @@ data class StreamSource(
     val decodedUrl: String,
     val maxQuality: String?,
     val qualities: List<String>,
+    val sourceId: String = "lk21",
+    val externalId: String? = null,
+    val detailPath: String? = null,
+    val season: Int = 0,
+    val episode: Int = 0,
 )
 
 data class SubtitleTrack(

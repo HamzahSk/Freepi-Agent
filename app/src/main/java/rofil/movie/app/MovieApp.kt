@@ -2,11 +2,15 @@ package rofil.movie.app
 
 import android.app.Application
 import rofil.movie.app.data.MovieRepository
+import rofil.movie.app.data.SourceSelection
 import rofil.movie.app.data.local.AppDatabase
 import rofil.movie.app.data.remote.Lk21Client
 import rofil.movie.app.data.remote.Lk21Parser
+import rofil.movie.app.data.remote.MovieBoxClient
 import rofil.movie.app.data.scrape.CatalogDataSource
 import rofil.movie.app.data.scrape.HttpCatalogDataSource
+import rofil.movie.app.data.scrape.MovieBoxCatalogDataSource
+import rofil.movie.app.data.scrape.MovieBoxStreamProvider
 import rofil.movie.app.data.scrape.ScrapeScriptLoader
 import rofil.movie.app.data.scrape.StreamProvider
 import rofil.movie.app.data.scrape.WebViewCatalogDataSource
@@ -33,6 +37,16 @@ class AppContainer(application: Application) {
         receiveBrowserCookie = { url, cookie -> android.webkit.CookieManager.getInstance().setCookie(url, cookie) },
     ) }
     val parser: Lk21Parser by lazy { Lk21Parser() }
+    val sourceSelection: SourceSelection by lazy { SourceSelection(application) }
+    val movieBoxClient: MovieBoxClient by lazy { MovieBoxClient(okhttp3.OkHttpClient.Builder().build()) }
+    val movieBoxCatalog: CatalogDataSource by lazy { MovieBoxCatalogDataSource(movieBoxClient) }
+    val movieBoxStreamProvider: StreamProvider by lazy {
+        MovieBoxStreamProvider(movieBoxClient, okhttp3.OkHttpClient.Builder()
+            .callTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .build())
+    }
 
     val sourceScripts: ScrapeScriptLoader by lazy { ScrapeScriptLoader(application) }
 
@@ -58,6 +72,10 @@ class AppContainer(application: Application) {
             streamProvider = streamProvider,
             client = client,
             database = database,
+            movieBoxCatalog = movieBoxCatalog,
+            movieBoxStreamProvider = movieBoxStreamProvider,
+            selectedSource = { sourceSelection.selectedId },
+            storeSelectedSource = sourceSelection::select,
         )
     }
 

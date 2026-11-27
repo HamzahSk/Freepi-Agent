@@ -9,6 +9,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
+import rofil.movie.app.extractor.hydrax.HydraxExtractor
+import rofil.movie.app.extractor.p2p.P2pExtractor
 import java.net.URI
 
 enum class PlayerStage {
@@ -290,6 +292,8 @@ class PlayerExtraction(
         var hits = 0
         var deepest = 0
         var provider = initial
+        val extractorId = Regex("^/iframe3/(p2p|hydrax)/", RegexOption.IGNORE_CASE)
+            .find(runCatching { URI(initial).path }.getOrDefault(""))?.groupValues?.get(1)?.lowercase()
         var last: Exception? = null
         val started = System.nanoTime()
         fun elapsed(from: Long) = (System.nanoTime() - from) / 1_000_000
@@ -374,14 +378,22 @@ class PlayerExtraction(
                 if (popup != null) {
                     requests++
                     val api = timed(PlayerStage.API_RESPONSE, popup.url) { post(popup, response.url) }
-                    val embed = PlayerMetadata.embed(api.body, api.url)
+                    val embed = when (popup.host.lowercase()) {
+                        "hydrax" -> HydraxExtractor.parseApiResponse(api.body, api.url)
+                        "p2p" -> P2pExtractor.parseApiResponse(api.body, api.url)
+                        else -> PlayerMetadata.embed(api.body, api.url)
+                    }
                     log(PlayerStage.EMBED_URL, embed, "provider reference depth=${depth + 1}")
                     visit(embed, response.url, depth + 1)?.let { return it }
                 }
                 val parsed = System.nanoTime()
                 val json = PlayerMetadata.json(response.body)
                 val data = if (json != null) PlayerMetadata.configuration(json, response.url)
-                    else PlayerMetadata.parse(response.body, response.url)
+                    else when (extractorId) {
+                        "hydrax" -> HydraxExtractor.parsePlayerPage(response.body, response.url)
+                        "p2p" -> P2pExtractor.parsePlayerPage(response.body, response.url)
+                        else -> PlayerMetadata.parse(response.body, response.url)
+                    }
                 log(PlayerStage.PLAYER_INITIALIZATION, response.url, "parseMs=${elapsed(parsed)} depth=$depth")
                 log(PlayerStage.PLAYER_METADATA, response.url,
                     "source=${if (json != null) "json_configuration" else "html"} candidates=${data.optJSONArray("media")?.length() ?: 0}")

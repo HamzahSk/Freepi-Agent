@@ -1,208 +1,317 @@
-Task: Refactor LK21 Extractors & Add Complete MovieBox Source
+Task: Deep Scraping Debugging & Browser-Based Reverse Engineering — LK21 and MovieBox
 
-Work across both repositories in the runner environment:
+Work across both repositories:
 
 - Main Android repository: "$GITHUB_WORKSPACE"
-- Movie source repository: "$MOVIE_SOURCE_DIR" ("https://github.com/HamzahSk/movie-source.git", branch "main")
+- Source repository: "$MOVIE_SOURCE_DIR" ("HamzahSk/movie-source", branch "main")
 
-Implement the following tasks completely while preserving existing functionality.
+The existing LK21 and MovieBox scrapers still have functional bugs. Perform a thorough investigation and fix the actual scraping implementations, not just their symptoms.
 
-1. Inspect Existing Files and Architecture
+IMPORTANT: Start by simulating the websites using a real Chromium browser. Do not rely solely on reading existing source code.
 
-Before making changes:
+1. Browser-Based Investigation (Mandatory First Step)
 
-- Inspect the entire "movie-source" repository.
-- Inspect the existing LK21 implementation, especially "src/lk21/stream.js".
-- Inspect "/lk21-request/" for real Hydrax request/response examples.
-- Locate and thoroughly inspect "moviebox.py", including all scraping logic and dependencies.
-- Inspect the Android application's source registration, source loading, playback, and diagnostics implementation.
-- Inspect the provided "stream.js" observer implementation if available.
+Use Playwright or another available Chromium browser automation tool.
 
-Understand the existing architecture and response contracts before modifying anything.
+Visit the actual LK21 and MovieBox websites and study how they work.
 
-2. Refactor LK21: Separate P2P and Hydrax
+For each website:
 
-The existing P2P stream extraction is already working. Do not rewrite or break its existing logic. Only separate its parser/extractor into its own dedicated module.
+- Inspect the homepage visually.
+- Understand the actual page structure and navigation.
+- Interact with search fields, buttons, filters, pagination, and content cards.
+- Open several movie and series detail pages.
+- Observe how the website loads its content.
+- Inspect browser DevTools network requests and responses.
+- Identify the actual APIs, endpoints, parameters, headers, and response formats.
+- Compare browser behavior with the current scraper implementation.
 
-Organize the implementation cleanly:
+Do not simply inspect HTML or copy endpoint names from existing code.
 
-- "src/lk21/stream.js" — responsible only for LK21 stream requests up to the video node PHP response.
-- "extractor/p2p/" — dedicated P2P stream parser/extractor, preserving existing working functionality.
-- "extractor/hydrax/" — dedicated Hydrax parser/extractor.
+Study the website as an actual user would, including its visual layout, loading behavior, dynamic content, and interactions.
 
-LK21 stream.js
+Save useful request/response fixtures and screenshots when appropriate.
 
-Refactor "stream.js" so its responsibility ends at the video node PHP stage.
+2. Fix LK21 Search
 
-It should:
+The LK21 search feature is currently broken: search results are missing, incorrect, or do not match the requested query.
 
-- Perform the existing LK21 stream request flow.
-- Capture and resolve the video node PHP response.
-- Preserve the actual response payload and relevant metadata.
-- Identify or expose the resulting extractor information, such as P2P/Hydrax or "embedUrl".
-- Delegate subsequent parsing to the appropriate extractor module.
+Investigate the actual website search behavior using Chromium.
 
-Do not mix P2P and Hydrax parsing logic inside LK21's "stream.js".
+Specifically:
 
-P2P Extractor
+- Identify the correct search URL and request method.
+- Inspect how search terms are encoded and submitted.
+- Identify required query parameters and headers.
+- Understand pagination and any filters.
+- Inspect the actual response and HTML structure.
+- Determine how movie titles, IDs, posters, and detail URLs are extracted.
 
-- Move the existing working P2P parser into "extractor/p2p/".
-- Preserve its current request flow, parsing behavior, and supported stream formats.
-- Ensure existing P2P playback continues working exactly as before.
-- Only change what is necessary to separate the implementation.
+Rewrite the scraper logic where necessary.
 
-Hydrax Extractor
+Expected result: Searching for a movie must return the same relevant results as the actual LK21 website, with correct titles, posters, URLs, and metadata.
 
-Use the actual examples inside "/lk21-request/" as the primary reference.
+Do not return homepage content as search results or use hardcoded sample data.
 
-- Inspect all relevant Hydrax requests and responses.
-- Handle responses containing "embedUrl".
-- Inspect the actual Hydrax embed page and available player structures.
-- Implement the necessary parsing and stream metadata handling.
-- Discover and verify missing endpoints through fresh network inspection when necessary.
-- Handle errors and unsupported responses properly.
+3. Fix LK21 Hydrax Stream Parser
 
-Do not invent endpoints or assume response structures without verification. Do not implement authentication bypasses, ad bypasses, or DRM circumvention.
+The Hydrax stream parser is still failing.
 
-3. Add MovieBox as a New Source
+Investigate the complete flow using the real "/lk21-request/" fixtures and fresh browser/network inspection.
 
-Create a complete MovieBox source inside "movie-source".
+- Follow the LK21 stream request until the video node PHP response.
+- Inspect the actual Hydrax response, including "embedUrl".
+- Open and study the corresponding embed page in Chromium.
+- Inspect publicly accessible player structures and network responses.
+- Identify where the current parser fails.
+- Correct URL normalization, response parsing, metadata extraction, and error handling.
+- Add fixtures based on verified responses.
 
-Use the existing "moviebox.py" as the primary reference and rewrite its scraping functionality in native JavaScript.
+Keep the existing architecture:
 
-Do not simply translate individual functions. Understand the entire Python scraper, its request flow, parsing logic, dependencies, and response structures before implementing the equivalent JavaScript version.
+- "src/lk21/stream.js" handles LK21 requests only up to video node PHP.
+- "extractor/p2p/" retains its existing working functionality.
+- "extractor/hydrax/" handles Hydrax parsing separately.
 
-Preserve all supported functionality, including:
+Do not mix P2P and Hydrax parsing back into "stream.js".
 
-- Homepage and trending content.
-- Movie and TV series discovery.
-- Search and pagination.
-- Movie and series details.
-- Genres and categories.
-- Seasons and episode listings, where supported.
-- Video source and playback URL resolution.
-- Subtitle information, where supported.
-- Posters, backdrops, thumbnails, and metadata.
+Do not implement ad bypasses, authentication bypasses, or DRM circumvention. If a provider requires user interaction or restricts access, report that limitation accurately.
 
-Endpoint Discovery and Re-scraping
+4. Fix MovieBox Homepage
 
-If "moviebox.py" is incomplete or some endpoints are missing:
+MovieBox's homepage scraping currently produces errors.
 
-- Perform fresh network inspection of publicly accessible MovieBox requests.
-- Identify the actual endpoints, HTTP methods, headers, query parameters, and request payloads.
-- Inspect real responses and their JSON structures.
-- Follow the complete request flow to identify endpoint dependencies.
-- Discover dynamically generated parameters or tokens required by legitimate client requests.
-- Verify each required endpoint before implementing it.
+Do not immediately patch the existing implementation.
 
-Do not invent endpoints, hardcode sample responses, or leave incomplete functionality.
+First, visit the actual MovieBox website using Chromium and understand how its homepage is constructed.
 
-4. Follow the Existing Movie Source Architecture
+Investigate:
 
-Both LK21 and MovieBox must follow the existing "movie-source" conventions.
+- Initial page loading and rendering.
+- Dynamic content and JavaScript-generated sections.
+- Homepage API requests.
+- Trending and featured sections.
+- Movie and TV series categories.
+- Poster and backdrop loading.
+- Pagination or lazy loading.
+- Required request headers and parameters.
+- Differences between server-rendered HTML and dynamically loaded content.
 
-Ensure:
+Study both the visual website and its underlying network behavior.
 
-- Consistent module exports and source interfaces.
-- Consistent response schemas.
-- Proper URL normalization.
-- Correct handling of nullable and missing fields.
-- Consistent error handling.
-- Proper separation of requests, parsers, and extractors.
-- Correct registration in "manifest.json".
+Then compare these findings against the current JavaScript scraper and identify the exact reason the homepage fails.
 
-Update relevant "tools/" verification scripts and fixtures for the new architecture and MovieBox source.
+Implement a proper fix that reproduces the website's actual content structure and response format.
 
-Keep the source modules independent and avoid unnecessary duplication.
+Do not replace the homepage with static data or an incomplete list.
 
-5. Integrate Everything into rofil.movie.app
+5. Verify Other MovieBox Features
 
-Update "$GITHUB_WORKSPACE" to support the refactored LK21 architecture and the new MovieBox source.
+After fixing the homepage, check whether the same underlying problems affect:
 
-LK21 Integration
-
-- Update stream resolution to use the separated P2P and Hydrax extractors.
-- LK21 stream observation must stop at the video node PHP response.
-- Ensure the app can identify and delegate to the correct extractor.
-- Fetch/sync the required extractor modules from "movie-source".
-- Preserve local caching and retryable error states.
-
-MovieBox Integration
-
-Register MovieBox as a new selectable source and implement all necessary application wiring:
-
-- Source registration and selection.
-- Homepage and content browsing.
-- Search and pagination.
-- Movie and series details.
+- Search.
+- Movie details.
+- Series details.
 - Seasons and episodes.
-- Playback integration.
-- Subtitle handling, where supported.
-- Loading, empty, and retryable error states.
+- Categories and genres.
+- Pagination.
+- Images and metadata.
+- Playback source resolution.
+- Subtitles, where supported.
 
-Follow existing Android source contracts and shared UI architecture. Do not introduce unnecessary MovieBox-specific changes to unrelated components.
+Fix related issues discovered during investigation.
 
-Diagnostics
+Preserve the existing source interface and ensure all responses match the application's expected schema.
 
-Preserve existing diagnostic stages:
+6. Browser-to-Scraper Comparison
 
-- "PLAYER_INITIALIZATION"
-- "PLAYER_METADATA"
-- "STREAM_VALIDATION"
+For each affected feature, compare three things:
 
-Ensure failures from LK21 extractors and MovieBox playback are reported correctly without breaking existing diagnostics.
+1. What the actual website displays in Chromium.
+2. What the website returns through its network requests.
+3. What the JavaScript scraper currently produces.
 
-6. Verification and Testing
+Use these comparisons to verify correctness.
 
-Movie Source Repository
+Test multiple search queries and different movie/series pages instead of relying on a single successful example.
+
+7. Android Integration and Regression Testing
+
+Check that the Android application correctly consumes the updated source implementations.
 
 Verify:
 
-- "src/lk21/" structure.
-- "extractor/p2p/" structure.
-- "extractor/hydrax/" structure.
-- MovieBox source implementation.
-- "manifest.json" registrations.
-- "tools/" scripts and fixtures.
+- LK21 search results display correctly.
+- LK21 Hydrax and P2P extraction use the correct modules.
+- MovieBox homepage loads correctly.
+- MovieBox search and detail pages work.
+- Images and metadata are displayed correctly.
+- Loading and error states work properly.
+- Existing sources remain unaffected.
 
-Run relevant Node.js verification and tests.
+Preserve existing diagnostics and error reporting.
 
-Test LK21 P2P against its existing working behavior and Hydrax against the actual "/lk21-request/" examples.
+8. Verification
 
-Test MovieBox against real responses or saved fixtures, covering its complete supported scraping flow.
+Run all relevant JavaScript tests and fixture verification scripts.
 
-Android Repository
-
-Run:
+Run Android tests and build:
 
 ./gradlew testDebugUnitTest
 ./gradlew assembleDebug
 
-Fix regressions introduced by these changes.
+Perform real browser-based verification after implementing fixes.
 
-7. Final Requirements
+Do not consider a feature fixed just because the code compiles or a mock fixture passes.
 
-- Preserve existing working P2P functionality.
-- Keep LK21 "stream.js" limited to the video node PHP stage.
-- Separate P2P and Hydrax responsibilities completely.
-- Implement MovieBox as a complete independent source.
-- Verify missing endpoints through actual network inspection.
-- Do not break other existing movie sources.
-- Do not introduce unrelated refactors.
-- Do not leave placeholders, TODO implementations, or hardcoded fake data.
-- Keep repositories clean and free of secrets or runner-specific absolute paths.
+9. Final Report
 
-8. Final Report
+Provide:
 
-Provide a clear summary covering:
+1. Browser investigation findings for LK21 and MovieBox.
+2. Root causes of LK21 search failures.
+3. Root causes of Hydrax parser failures.
+4. Root causes of MovieBox homepage failures.
+5. Actual endpoints and request/response structures discovered.
+6. Files and modules changed.
+7. Browser testing results and screenshots, where available.
+8. Automated test and Android build results.
+9. Remaining limitations.
 
-1. Existing LK21 architecture and changes made.
-2. Findings from "/lk21-request/" and Hydrax implementation.
-3. How P2P was separated and how its existing functionality was preserved.
-4. MovieBox Python-to-JavaScript implementation and discovered endpoints.
-5. New files and manifest registrations.
-6. Android integration changes.
-7. Test and build results.
-8. Any remaining limitations or unsupported functionality.
+Critical Instructions
 
-Important: Complete both tasks. Do not consider the work finished merely because the modules compile. Verify actual request/response flows and ensure the Android application can consume the new source implementations correctly.
+- Browser simulation is mandatory before implementation.
+- Visually inspect the websites, not just their source code.
+- Study actual network requests and responses.
+- Do not invent endpoints or response structures.
+- Fix root causes instead of adding temporary workarounds.
+- Preserve working P2P functionality.
+- Avoid unrelated refactoring.
+- Do not leave TODOs, placeholders, or fake data.
+- Complete and verify both LK21 and MovieBox tasks.
+
+Priority: Actual website behavior is the source of truth. The scraper must reproduce what the website genuinely provides, not what the existing implementation assumes it provides.
+
+10. Critical Architecture: Fully Remote Movie Source System
+
+IMPORTANT: All movie source implementations and scraping logic must live exclusively in the "movie-source" repository.
+
+The main Android repository ("rofil.movie.app") must act only as a visual application framework and generic source client.
+
+A. Responsibilities of "movie-source"
+
+All source-related logic must be implemented and maintained in:
+
+"https://github.com/HamzahSk/movie-source"
+
+This includes:
+
+- All source definitions and registrations.
+- Homepage scraping.
+- Search and pagination.
+- Movie and series detail scraping.
+- Category and genre parsing.
+- Season and episode extraction.
+- Stream request handling.
+- P2P and Hydrax extractors.
+- All other stream parsers and resolvers.
+- Subtitle extraction and metadata.
+- Response normalization.
+- Source-specific request headers and parameters.
+- Source-specific error handling.
+- Source manifests and version information.
+
+The repository must expose a consistent, versioned interface that the Android application can consume remotely.
+
+B. Responsibilities of "rofil.movie.app"
+
+The main Android repository must remain source-agnostic.
+
+It should only handle:
+
+- UI and visual presentation.
+- Generic movie and series models.
+- Generic source discovery and registration.
+- Remote source manifest loading.
+- Downloading and caching source modules.
+- Executing source modules through the existing scripting/runtime engine.
+- Passing generic requests and arguments to source modules.
+- Rendering normalized responses.
+- Generic player integration.
+- Generic loading, error, and diagnostic states.
+
+Do not implement LK21-specific or MovieBox-specific scraping, parsing, endpoints, or extraction logic inside the Android repository.
+
+C. Dynamic Source Discovery
+
+Implement a mechanism that allows the Android application to discover new sources through the remote manifest.
+
+When a new source is added to "movie-source":
+
+1. Update the remote manifest.
+2. Publish the required source modules.
+3. The Android application fetches the updated manifest.
+4. It discovers the new source automatically.
+5. It downloads and caches the required modules.
+6. It makes the source available in the application.
+
+Adding a new movie source must NOT require modifying Android source code, adding hardcoded source registrations, or releasing a new APK.
+
+D. Dynamic Extractor and Parser Loading
+
+Extractors and parsers must also be independently managed in "movie-source".
+
+For example:
+
+- LK21 delegates to P2P or Hydrax modules.
+- Another source can use a completely different extractor.
+- New extractors can be added without modifying the Android application.
+
+Define clear module dependencies and ensure all required modules are available before executing a source.
+
+E. Remote Updates, Caching and Compatibility
+
+Implement:
+
+- Manifest versioning.
+- Individual module versioning or content hashes.
+- Local module caching.
+- Cache invalidation when remote modules change.
+- Dependency resolution.
+- Retryable download failures.
+- Compatibility checks between the app runtime and source modules.
+- Safe fallback to previously cached compatible versions when remote updates fail.
+
+Avoid downloading every module repeatedly when nothing has changed.
+
+F. Generic Source Execution Contract
+
+Define a consistent interface for all source modules.
+
+The Android application must not need to know the internal implementation of individual sources.
+
+Source-specific functionality must be exposed through the shared contract, including:
+
+- "home"
+- "search"
+- "detail"
+- "episodes"
+- "stream"
+- Other supported capabilities declared by the source manifest.
+
+Use the existing project conventions where possible instead of introducing an incompatible interface.
+
+G. Architecture Verification
+
+After implementing the changes, verify this scenario:
+
+1. Add a hypothetical new source directly to "movie-source".
+2. Register its modules and dependencies in the remote manifest.
+3. Publish the updated repository.
+4. Refresh the source manifest from the Android application.
+5. Confirm the new source appears without modifying or rebuilding the Android application.
+6. Verify its homepage, search, details, and playback through the generic runtime.
+
+This is a critical acceptance test.
+
+Final architectural rule: "movie-source" owns all scraping and extraction intelligence. "rofil.movie.app" owns the presentation and generic execution environment. Adding or updating sources must be possible entirely through "movie-source", without changing the main Android repository.
