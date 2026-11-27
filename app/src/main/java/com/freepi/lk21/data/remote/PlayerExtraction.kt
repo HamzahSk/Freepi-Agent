@@ -29,7 +29,9 @@ typealias BrowserExtraction = suspend (String, String, String, suspend (JSONObje
 
 /** Pure parsing shared by HTTP, browser bridge and fixture tests. No DOM execution in Rhino. */
 object PlayerMetadata {
-    private const val INTERACTION_ELEMENTS = "#overlay, #uyeouyeo.visible, .custom-play-btn"
+    // Ordinary playback controls do not prove that ads/authentication are required.
+    // Static HTML remains conservative for explicit overlays; Chromium checks visibility.
+    private const val INTERACTION_ELEMENTS = "#overlay, #uyeouyeo.visible"
     fun absolute(raw: String, base: String): String? = raw.takeIf { it.isNotBlank() }?.let { runCatching {
         URI(base).resolve(raw.replace("\\/", "/").trim()).normalize().let {
             URI(it.toString().substringBefore("#"))
@@ -152,6 +154,8 @@ object PlayerMetadata {
             when (node) {
                 is JSONArray -> for (i in 0 until node.length()) walk(node.opt(i), depth + 1, trackContext)
                 is JSONObject -> {
+                    if (node.has("drm") && node.opt("drm") != false && !node.isNull("drm")) return
+                    if (node.has("fileUrl") && node.has("status") && node.optString("status") != "success") return
                     val kind = node.optString("kind")
                     val raw = listOf("fileUrl", "file", "src", "url").firstNotNullOfOrNull {
                         (node.opt(it) as? String)?.takeIf(String::isNotBlank)
@@ -318,7 +322,14 @@ class PlayerExtraction(
             log(PlayerStage.PLAYER_METADATA, url, "candidate; validation pending")
             val response = fetch(url, parent, true, PlayerStage.STREAM_VALIDATION)
             val mime = PlayerMetadata.validatedMime(response) ?: run {
-                log(PlayerStage.STREAM_VALIDATION, response.url, "rejected reason=not_media_document")
+                val reason = when {
+                    response.status !in 200..299 -> "http_status"
+                    response.truncated -> "truncated_document"
+                    PlayerMetadata.json(response.body) != null -> "json_metadata_not_manifest"
+                    else -> "not_media_document"
+                }
+                last = StreamResolutionException("STREAM_VALIDATION: candidate rejected ($reason)")
+                log(PlayerStage.STREAM_VALIDATION, response.url, "rejected reason=$reason status=${response.status}")
                 return null
             }
             if ((mime == "application/dash+xml" && response.body.contains("ContentProtection", true)) ||
@@ -372,6 +383,8 @@ class PlayerExtraction(
                 val data = if (json != null) PlayerMetadata.configuration(json, response.url)
                     else PlayerMetadata.parse(response.body, response.url)
                 log(PlayerStage.PLAYER_INITIALIZATION, response.url, "parseMs=${elapsed(parsed)} depth=$depth")
+                log(PlayerStage.PLAYER_METADATA, response.url,
+                    "source=${if (json != null) "json_configuration" else "html"} candidates=${data.optJSONArray("media")?.length() ?: 0}")
                 if (data.optBoolean("interactionRequired")) {
                     last = StreamResolutionException("PLAYER_INITIALIZATION: provider requires user interaction or advertising flow")
                     return null // A child frame must not circumvent its parent's interaction requirements.

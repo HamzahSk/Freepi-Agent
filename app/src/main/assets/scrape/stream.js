@@ -7,7 +7,7 @@
   var observed = [], responseTracks = [], frameDepth = 0, stateKey = '', lastSend = 0;
   var ancestorBlocked = false, ancestorPending = false;
   var failedScripts = 0, jsErrors = 0, ready = false, setupError = false, boundPlayer = null;
-  var timer = null;
+  var timer = null, verifyObserved = false;
   var maxDepth = window.__freepiMaxDepth === undefined ? 6 : window.__freepiMaxDepth;
   var deadline = window.__freepiDeadline || (start + (window.__freepiTimeoutMs || 29000));
   var selector = 'iframe#main-player,iframe#video-iframe,iframe[allowfullscreen],iframe[allow*="fullscreen"],.player iframe,#player iframe,#vstr iframe';
@@ -40,7 +40,8 @@
   function inspect(value, depth, trackContext, base) {
     if (!value || depth > 12 || typeof value !== 'object') return;
     if (Array.isArray(value)) { value.slice(0, 200).forEach(function (v) { inspect(v, depth + 1, trackContext, base); }); return; }
-    var file = value.fileUrl || value.file || value.src || value.url;
+    if (value.drm) return;
+    var file = [value.fileUrl, value.file, value.src, value.url].find(function (v) { return typeof v === 'string' && v.trim(); });
     if (trackContext || /^(subtitles|captions)$/.test(value.kind || '')) {
       if (responseTracks.length < 200 && file) responseTracks.push({file:new URL(file,base).href,kind:'subtitles',label:value.label,language:value.language || value.srclang});
     } else if (observed.length < 200 && file && (value.fileUrl || value.type || F.isMedia(file)))
@@ -54,19 +55,31 @@
   var originalOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function () {
     this.addEventListener('load', function () {
-      if (this.status < 200 || this.status >= 300) return;
+      var base = this.responseURL || location.href;
+      var verify = /^\/verify\/[^/]+\/?$/.test(new URL(base).pathname), before = observed.length;
       try {
+        if (this.status < 200 || this.status >= 300) return;
         var value = null;
         if (this.responseType === 'json') value = this.response;
         else if ((!this.responseType || this.responseType === 'text') && this.responseText.length <= 524288 &&
-            /json/i.test(this.getResponseHeader('Content-Type') || '')) value = JSON.parse(this.responseText);
-        inspect(value, 0, false, this.responseURL || location.href);
+            (verify || /json/i.test(this.getResponseHeader('Content-Type') || ''))) value = JSON.parse(this.responseText);
+        // An unsuccessful verification response is not authorization to use a stale fileUrl.
+        if (!verify || (value && value.status === 'success')) inspect(value, 0, false, base);
       } catch (e) {}
+      finally {
+        if (verify) {
+          verifyObserved = true;
+          try { window.FreepiScrapeBridge.metadataResponse(window.__freepiRequestId,base,this.status,observed.length - before); } catch (e) {}
+        }
+      }
     }, {once:true});
     return originalOpen.apply(this, arguments);
   };
   function gate() {
-    return Array.from(document.querySelectorAll('#overlay, #uyeouyeo.visible, .custom-play-btn')).some(function (el) {
+    // playcdn creates .custom-play-btn AFTER successful /verify metadata. It only starts
+    // JWPlayer; its presence is not evidence of an advertising/authentication gate.
+    // Explicit provider overlays still block even when a fileUrl has been observed.
+    return Array.from(document.querySelectorAll('#overlay, #uyeouyeo.visible')).some(function (el) {
       var style = getComputedStyle(el), rect = el.getBoundingClientRect();
       return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
     });
@@ -120,6 +133,7 @@
     else if (ancestorPending || document.readyState !== 'complete') { stage = 'DEPENDENCY_LOADING'; reason = 'page dependencies did not finish loading'; }
     else if (setupError) { stage = 'PLAYER_INITIALIZATION'; reason = 'JWPlayer reported a setup or playback error'; }
     else if (jsErrors) { stage = 'PLAYER_INITIALIZATION'; reason = 'JavaScript execution failed (' + jsErrors + ' errors)'; }
+    else if (verifyObserved) { stage = 'PLAYER_METADATA'; reason = 'verification response observed; no authorized playable source accepted before deadline'; }
     else if (!ready) { stage = 'PLAYER_INITIALIZATION'; reason = 'player did not expose a ready state or playable metadata'; }
     return F.errorPayload('TIMEOUT', stage + ': ' + reason);
   }
@@ -151,7 +165,9 @@
         else if (ancestorPending || document.readyState !== 'complete') state('DEPENDENCY_LOADING','dependencies_pending');
         else if (setupError) state('PLAYER_INITIALIZATION','setup_error');
         else if (jsErrors && !ready) state('PLAYER_INITIALIZATION','js_error');
-        else state(ready ? 'PLAYER_METADATA' : 'PLAYER_INITIALIZATION',ready ? (data.media.length ? 'metadata_pending' : 'ready') : 'waiting_for_player');
+        else if (data.media.length) state('PLAYER_METADATA','metadata_pending');
+        else if (verifyObserved) state('PLAYER_METADATA','metadata_unavailable');
+        else state(ready ? 'PLAYER_METADATA' : 'PLAYER_INITIALIZATION',ready ? 'ready' : 'waiting_for_player');
         if (document.readyState === 'complete' && !ancestorPending && !ancestorBlocked && !gate() && !setupError && data.media.length && Date.now() - lastSend >= 750) {
           lastSend = Date.now();
           // Kotlin validates while this frame remains alive; rejection does not end observation.

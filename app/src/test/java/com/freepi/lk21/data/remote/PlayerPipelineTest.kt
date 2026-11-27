@@ -90,6 +90,71 @@ class PlayerPipelineTest {
         assertTrue(error?.message.orEmpty().contains("authorized DRM"))
     }
 
+    @Test fun redirectedVerifyJsonFileUrlReachesValidationWithResponseReferer() = runBlocking {
+        val verify = "https://playcdn.de/verify/fixture"
+        val media = "https://media.test/master.m3u8?token=fixture"
+        val events = mutableListOf<Pair<PlayerStage, String>>()
+        val stream = PlayerExtraction(get = { url, parent, isMedia ->
+            when (url) {
+                page -> PlayerResponse(verify, """{"status":"success","fileUrl":"$media"}""", "application/json")
+                media -> {
+                    assertTrue(isMedia)
+                    assertEquals(verify, parent)
+                    PlayerResponse(url, manifest, "text/plain")
+                }
+                else -> error("Unexpected request $url")
+            }
+        }, post = { _, _ -> error("Unexpected API") },
+            log = { stage, _, detail -> events += stage to detail }).resolve(page, catalog)
+        assertEquals(media, stream.url)
+        assertEquals("application/x-mpegURL", stream.mimeType)
+        assertTrue(events.any { it.first == PlayerStage.PLAYER_METADATA && it.second.contains("json_configuration") })
+        assertTrue(events.any { it.first == PlayerStage.STREAM_VALIDATION && it.second.startsWith("success") })
+    }
+
+    @Test fun playbackControlAloneDoesNotBlockStaticMetadataButExplicitOverlayDoes() {
+        val html = "<div class='custom-play-btn'></div><video src='/master.m3u8'></video>"
+        assertFalse(PlayerMetadata.parse(html, page).getBoolean("interactionRequired"))
+        assertTrue(PlayerMetadata.parse("<div id='overlay'></div>$html", page).getBoolean("interactionRequired"))
+    }
+
+    @Test fun fileUrlIsOnlyACandidateAndJsonIsNeverAPlayableManifest() = runBlocking {
+        val details = mutableListOf<String>()
+        val error = runCatching { PlayerExtraction(get = { url, _, _ ->
+            PlayerResponse(url, if (url == page) """{"fileUrl":"/master.m3u8"}"""
+                else """{"fileUrl":"/other.m3u8"}""", "application/json")
+        }, post = { _, _ -> error("Unexpected API") }, log = { _, _, detail -> details += detail })
+            .resolve(page, catalog) }.exceptionOrNull()
+        assertTrue(error?.message.orEmpty().startsWith("STREAM_VALIDATION:"))
+        assertTrue(details.any { it.contains("rejected reason=json_metadata_not_manifest") })
+        assertEquals(0, PlayerMetadata.configuration(JSONObject("""{"drm":{"licenseUrl":"/license"},"fileUrl":"/master.m3u8"}"""), page)
+            .getJSONArray("media").length())
+        assertEquals(0, PlayerMetadata.configuration(JSONObject("""{"status":"error","fileUrl":"/stale.m3u8"}"""), page)
+            .getJSONArray("media").length())
+    }
+
+    @Test fun verifyBrowserMetadataRetainsPlayerRefererAndValidatesBeforeAccepting() = runBlocking {
+        val player = "https://playcdn.de/fixture"
+        val media = "https://media.test/master.m3u8"
+        var validated = false
+        val stream = PlayerExtraction(get = { url, parent, isMedia ->
+            if (url == media) {
+                assertTrue(isMedia)
+                assertEquals(player, parent)
+                validated = true
+                PlayerResponse(url, manifest)
+            } else PlayerResponse(url, "<div id='vstr'></div>")
+        }, post = { _, _ -> error("Unexpected API") }, browser = { _, _, _, accept ->
+            val metadata = PlayerMetadata.configuration(JSONObject("""{"status":"success","fileUrl":"$media"}"""),
+                "https://playcdn.de/verify/fixture").put("pageUrl", player)
+            assertTrue(accept(metadata))
+            assertTrue(validated)
+            metadata
+        }).resolve(player, catalog)
+        assertEquals(media, stream.url)
+        assertEquals(player, stream.headers["Referer"])
+    }
+
     @Test fun totalDeadlineBoundsRecursiveWork() = runBlocking {
         val before = System.nanoTime()
         val error = runCatching { PlayerExtraction(get = { _, _, _ -> delay(10_000); error("Unreachable") },

@@ -17,6 +17,11 @@ on:
         required: false
         default: true
         type: boolean
+      movie_source_repo:
+        description: "Target repository in owner/repo format"
+        required: false
+        default: "HamzahSk/movie-source"
+        type: string
   push:
     paths:
       - "prompt.md"
@@ -34,6 +39,7 @@ env:
   CODEX_ATTEMPT_TIMEOUT_MINUTES: "45"
   CODEX_RETRY_BASE_SECONDS: "15"
   CODEX_RETRY_MAX_SECONDS: "120"
+  MOVIE_SOURCE_SLUG: "${{ inputs.movie_source_repo || 'HamzahSk/movie-source' }}"
 
 jobs:
   codex-run:
@@ -42,6 +48,7 @@ jobs:
 
     env:
       XINGCHIAPI_API_KEY: ${{ secrets.XINGCHIAPI_API_KEY }}
+      MOVIE_SOURCE: ${{ secrets.MOVIE_SOURCE }}
       CODEX_BASE_SHA: ${{ github.sha }}
 
     steps:
@@ -51,9 +58,31 @@ jobs:
           set -Eeuo pipefail
           echo "CODEX_HOME=$RUNNER_TEMP/codex-home" >> "$GITHUB_ENV"
           echo "CODEX_RECOVERY_DIR=$RUNNER_TEMP/codex-recovery" >> "$GITHUB_ENV"
+          echo "MOVIE_SOURCE_DIR=$RUNNER_TEMP/movie-source" >> "$GITHUB_ENV"
 
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Checkout movie-source repository
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "${MOVIE_SOURCE:-}" ]]; then
+            echo "::error::Repository secret MOVIE_SOURCE is required to access movie-source"
+            exit 1
+          fi
+
+          rm -rf "$MOVIE_SOURCE_DIR"
+          git -c http.extraHeader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$MOVIE_SOURCE" | base64 -w0)" \
+            clone "https://github.com/${MOVIE_SOURCE_SLUG}.git" "$MOVIE_SOURCE_DIR"
+
+          git -C "$MOVIE_SOURCE_DIR" config user.name "${GITHUB_ACTOR:-codex-bot}"
+          git -C "$MOVIE_SOURCE_DIR" config user.email "${GITHUB_ACTOR:-codex-bot}@users.noreply.github.com"
+
+          # Simpan URL bersih tanpa token di remote origin
+          git -C "$MOVIE_SOURCE_DIR" remote set-url origin "https://github.com/${MOVIE_SOURCE_SLUG}.git"
+
+          echo "MOVIE_SOURCE_DIR=$MOVIE_SOURCE_DIR" >> "$GITHUB_ENV"
 
       - name: Restore Codex session cache
         uses: actions/cache/restore@v4
@@ -153,10 +182,47 @@ jobs:
       - name: Run Codex with session recovery
         shell: bash
         run: |
-          echo "Available repository:"
+          set -Eeuo pipefail
+          echo "Available repositories:"
           echo "Main: $GITHUB_WORKSPACE"
+          echo "Movie Source: $MOVIE_SOURCE_DIR"
+
+          export MOVIE_SOURCE_DIR
 
           bash .github/scripts/run-codex-with-recovery.sh prompt.md
+
+      - name: Commit and push changes to movie-source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -z "${MOVIE_SOURCE:-}" ]]; then
+            echo "::error::MOVIE_SOURCE secret is missing"
+            exit 1
+          fi
+
+          git -C "$MOVIE_SOURCE_DIR" add -A
+          if git -C "$MOVIE_SOURCE_DIR" diff --cached --quiet; then
+            echo "No changes in movie-source to commit or push."
+            exit 0
+          fi
+
+          git -C "$MOVIE_SOURCE_DIR" commit -m "chore(codex): update movie-source (${GITHUB_SHA:0:7})"
+
+          ASKPASS_SCRIPT="$RUNNER_TEMP/git-askpass-movie-source.sh"
+          cat > "$ASKPASS_SCRIPT" <<'EOF'
+          #!/usr/bin/env bash
+          case "$1" in
+            *Username*) printf '%s\n' "x-access-token" ;;
+            *Password*) printf '%s\n' "${MOVIE_SOURCE}" ;;
+          esac
+          EOF
+          chmod 700 "$ASKPASS_SCRIPT"
+
+          GIT_ASKPASS="$ASKPASS_SCRIPT" GIT_TERMINAL_PROMPT=0 \
+            git -C "$MOVIE_SOURCE_DIR" push origin HEAD
+
+          rm -f "$ASKPASS_SCRIPT"
+          echo "Successfully pushed changes to ${MOVIE_SOURCE_SLUG}."
 
       - name: Collect changed files and recovery diagnostics
         if: always()

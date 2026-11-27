@@ -388,7 +388,12 @@ class WebViewScrapeEngine(
                     val path = resource.url.path.orEmpty()
                     val extension = path.substringAfterLast('/', "").substringAfterLast('.', "")
                         .lowercase()
-                    val likelyMedia = PlayerMetadata.mime(target) != null || extension.isBlank()
+                    val verify = Regex("^/verify/[^/]+/?$").matches(path)
+                    if (verify) ScrapeLogger.stage(requestId, request.kind, "PLAYER_METADATA", target,
+                        detail = "source=verify_request method=${resource.method} trustedContext=${context != null}; response body observed by XHR listener only")
+                    // A verify endpoint is JSON configuration, never a manifest. Do not replay it
+                    // as an extensionless stream candidate (it may be signed or single-use).
+                    val likelyMedia = PlayerMetadata.mime(target) != null || (extension.isBlank() && !verify)
                     if (context != null && likelyMedia && !resource.isForMainFrame && resource.method == "GET") {
                         // Treat requests only as candidates. The resolver validates the response body.
                         observedMedia[target] = context
@@ -566,17 +571,28 @@ class WebViewScrapeEngine(
                         }
                         val data = json.optJSONObject("data") ?: return@launch
                         val page = PlayerMetadata.absolute(data.optString("pageUrl"), session.request.url)
-                        if (page != null) session.trustedPlayerPages.add(page)
                         if (page == null) return@launch
+                        if (page !in session.trustedPlayerPages) {
+                            ScrapeLogger.stage(session.requestId, session.request.kind, "PLAYER_METADATA", page,
+                                detail = "rejected reason=unregistered_player_page")
+                            return@launch
+                        }
                         val media = data.optJSONArray("media") ?: org.json.JSONArray().also { data.put("media", it) }
+                        var merged = 0
                         session.observedMedia.forEach { (url, parent) ->
-                            if ((0 until media.length()).none { media.optJSONObject(it)?.optString("url") == url }) {
+                            if (parent == page && (0 until media.length()).none { media.optJSONObject(it)?.optString("url") == url }) {
                                 media.put(JSONObject().put("url", url).put("pageUrl", parent))
+                                merged++
                             }
                         }
                         if (!session.delivered.compareAndSet(false, true)) return@launch
                         try {
-                            if (session.onStreamMetadata.invoke(data)) session.deferred.complete(json)
+                            ScrapeLogger.stage(session.requestId, session.request.kind, "PLAYER_METADATA", page,
+                                detail = "source=bridge candidates=${media.length()} networkMerged=$merged; invoking onStreamMetadata")
+                            val accepted = session.onStreamMetadata.invoke(data)
+                            ScrapeLogger.stage(session.requestId, session.request.kind, "STREAM_VALIDATION", page,
+                                detail = "onStreamMetadata accepted=$accepted")
+                            if (accepted) session.deferred.complete(json)
                         } finally { session.delivered.set(false) }
                     } catch (e: CancellationException) { throw e }
                     catch (e: Exception) { session.fail(e) }
@@ -600,8 +616,12 @@ class WebViewScrapeEngine(
                 if (session.request.kind == ScrapeKind.STREAM && json.optBoolean("ok")) {
                     val data = json.optJSONObject("data")
                     val media = data?.optJSONArray("media") ?: org.json.JSONArray()
+                    val page = data?.optString("pageUrl")?.let { PlayerMetadata.absolute(it, session.request.url) }
                     session.observedMedia.forEach { (url, parent) ->
-                        media.put(JSONObject().put("url", url).put("pageUrl", parent))
+                        if (parent == page && page in session.trustedPlayerPages &&
+                            (0 until media.length()).none { media.optJSONObject(it)?.optString("url") == url }) {
+                            media.put(JSONObject().put("url", url).put("pageUrl", parent))
+                        }
                     }
                     data?.put("media", media)
                 }
@@ -616,7 +636,18 @@ class WebViewScrapeEngine(
         @JavascriptInterface
         fun playerPage(id: String?, url: String?) {
             if (id != session.requestId || url == null) return
-            PlayerMetadata.absolute(url, session.request.url)?.let { session.trustedPlayerPages.add(it) }
+            PlayerMetadata.absolute(url, session.request.url)?.let {
+                if (session.trustedPlayerPages.add(it)) ScrapeLogger.stage(session.requestId, session.request.kind,
+                    "PLAYER_INITIALIZATION", it, detail = "player_page registered")
+            }
+        }
+
+        @JavascriptInterface
+        fun metadataResponse(id: String?, url: String?, status: Int, candidates: Int) {
+            if (id != session.requestId || session.request.kind != ScrapeKind.STREAM) return
+            val response = PlayerMetadata.absolute(url.orEmpty(), session.request.url) ?: return
+            ScrapeLogger.stage(session.requestId, session.request.kind, "PLAYER_METADATA", response,
+                detail = "source=verify_response status=${status.coerceIn(0, 599)} candidates=${candidates.coerceIn(0, 200)}")
         }
 
         @JavascriptInterface
@@ -636,7 +667,7 @@ class WebViewScrapeEngine(
             if (id != session.requestId) return
             val stages = setOf("PLAYER_HTML", "DEPENDENCY_LOADING", "PLAYER_INITIALIZATION", "PLAYER_METADATA")
             val states = setOf("loading", "interactive", "complete", "dependencies_pending", "dependencies_failed",
-                "waiting_for_player", "ready", "setup_error", "interaction_required", "metadata_pending", "js_error", "resource_failed")
+                "waiting_for_player", "ready", "setup_error", "interaction_required", "metadata_pending", "metadata_unavailable", "js_error", "resource_failed")
             if (stage !in stages || state !in states) return
             session.handler.post {
                 session.playerStage = stage!!
