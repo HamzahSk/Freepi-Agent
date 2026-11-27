@@ -35,6 +35,9 @@ data class ScrapeRequest(
     /** Number of *additional* attempts for transient failures. */
     val retries: Int = 1,
     val extraHeaders: Map<String, String> = emptyMap(),
+    /** STREAM only: load the real parent document, preserving iframe/CSP restrictions. */
+    val embeddingPageUrl: String? = null,
+    val streamProviderUrl: String? = null,
 )
 
 data class ScrapeSourceInfo(

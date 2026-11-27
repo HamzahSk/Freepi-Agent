@@ -22,6 +22,7 @@ class ScrapeScriptLoader(private val context: Context) {
         return buildString {
             append("window.__freepiRequestId=").append(JSONObject.quote(requestId)).append(";\n")
             append("window.__freepiRequestUrl=").append(JSONObject.quote(request.url)).append(";\n")
+            append("window.__freepiProviderUrl=").append(JSONObject.quote(request.streamProviderUrl ?: request.url)).append(";\n")
             append(common).append('\n')
             append(page)
         }

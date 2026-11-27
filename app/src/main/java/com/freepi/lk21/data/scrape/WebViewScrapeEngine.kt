@@ -21,6 +21,10 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import com.freepi.lk21.data.remote.PlayerMetadata
+import java.util.concurrent.ConcurrentHashMap
 import com.freepi.lk21.data.remote.AccessBlockedException
 import com.freepi.lk21.data.remote.NetworkUnavailableException
 import com.freepi.lk21.data.remote.ParseException
@@ -184,7 +188,16 @@ class WebViewScrapeEngine(
                     putAll(request.extraHeaders)
                 }
 
-                webView.loadUrl(request.url, headers)
+                if (request.kind == ScrapeKind.STREAM) {
+                    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                        throw WebViewUnavailableException("PLAYER_INITIALIZATION: update Android System WebView for iframe observation.")
+                    }
+                    // Executes independently in each real iframe, including cross-origin providers.
+                    // No provider fetch/timer APIs are replaced and no gestures are synthesized.
+                    WebViewCompat.addDocumentStartJavaScript(webView,
+                        scripts.script(request, requestId), setOf("*"))
+                }
+                webView.loadUrl(request.embeddingPageUrl ?: request.url, headers)
                 withTimeout(request.timeoutMs) { deferred.await() }
             } catch (e: TimeoutCancellationException) {
                 ScrapeLogger.failure(
@@ -231,10 +244,10 @@ class WebViewScrapeEngine(
             domStorageEnabled = true
             databaseEnabled = true
             javaScriptCanOpenWindowsAutomatically = false
-            setSupportMultipleWindows(false)
+            setSupportMultipleWindows(request.kind == ScrapeKind.STREAM)
             loadsImagesAutomatically = false
             blockNetworkImage = true
-            mediaPlaybackRequiresUserGesture = false
+            mediaPlaybackRequiresUserGesture = request.kind == ScrapeKind.STREAM
             useWideViewPort = true
             loadWithOverviewMode = true
             cacheMode = WebSettings.LOAD_DEFAULT
@@ -261,6 +274,7 @@ class WebViewScrapeEngine(
 
     private fun inject(webView: WebView, session: Session) {
         if (session.deferred.isCompleted) return
+        if (session.request.kind == ScrapeKind.STREAM) return // installed at document start in all frames
         if (!session.injected.compareAndSet(false, true)) return
         val script = try {
             scripts.script(session.request, session.requestId)
@@ -317,7 +331,26 @@ class WebViewScrapeEngine(
             if (deferred.isActive) deferred.completeExceptionally(error)
         }
 
+        val observedMedia = ConcurrentHashMap<String, String>()
+
         val client = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, resource: WebResourceRequest): WebResourceResponse? {
+                if (request.kind == ScrapeKind.STREAM) {
+                    val target = resource.url.toString()
+                    if (resource.url.path == "/api.php") ScrapeLogger.stage(requestId, request.kind,
+                        "API_RESPONSE", target, detail = "browser request method=${resource.method}")
+                    val parent = resource.requestHeaders.entries
+                        .firstOrNull { it.key.equals("Referer", true) }?.value
+                    val provider = request.streamProviderUrl ?: request.url
+                    if (PlayerMetadata.mime(target) != null && parent != null &&
+                        runCatching { java.net.URI(parent).host == java.net.URI(provider).host }.getOrDefault(false)) {
+                        observedMedia[target] = parent
+                        ScrapeLogger.stage(requestId, request.kind, "STREAM_METADATA", target,
+                            detail = "network candidate; validation pending")
+                    }
+                }
+                return null
+            }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                 currentUrl = url
@@ -475,6 +508,14 @@ class WebViewScrapeEngine(
                     throw ParseException("The extraction script returned an empty payload.")
                 }
                 val json = JSONObject(payload)
+                if (session.request.kind == ScrapeKind.STREAM && json.optBoolean("ok")) {
+                    val data = json.optJSONObject("data")
+                    val media = data?.optJSONArray("media") ?: org.json.JSONArray()
+                    session.observedMedia.forEach { (url, parent) ->
+                        media.put(JSONObject().put("url", url).put("pageUrl", parent))
+                    }
+                    data?.put("media", media)
+                }
                 session.deferred.complete(json)
             } catch (t: Throwable) {
                 session.fail(
@@ -488,7 +529,7 @@ class WebViewScrapeEngine(
             ScrapeLogger.stage(
                 requestId = session.requestId,
                 kind = session.request.kind,
-                stage = "js_" + (stage ?: "log"),
+                stage = stage ?: "log",
                 url = session.currentUrl,
                 detail = message,
             )

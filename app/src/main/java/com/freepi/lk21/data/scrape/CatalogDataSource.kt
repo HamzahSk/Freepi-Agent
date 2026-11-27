@@ -35,6 +35,7 @@ class CompositeStreamProvider(
                 return primary.resolve(detail, source)
             } catch (t: Throwable) {
                 if (t is kotlinx.coroutines.CancellationException) throw t
+                if (t is com.freepi.lk21.data.remote.AccessBlockedException) throw t
                 primaryError = t
                 ScrapeLogger.warn(
                     requestId = "stream",

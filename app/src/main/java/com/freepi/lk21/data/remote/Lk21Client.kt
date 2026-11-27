@@ -206,6 +206,29 @@ class Lk21Client(cacheDir: File) {
         }
     }
 
+    /** Player exchanges never use catalog mirror failover or cached API responses. */
+    suspend fun playerResponse(url: String, referer: String, media: Boolean = false,
+        popup: PopupRequest? = null): PlayerResponse = withContext(Dispatchers.IO) {
+        val builder = Request.Builder().url(url)
+            .header("Referer", referer)
+            .header("Origin", java.net.URI(referer).let { "${it.scheme}://${it.authority}" })
+            .cacheControl(okhttp3.CacheControl.Builder().noCache().build())
+        if (popup != null) builder.post(okhttp3.FormBody.Builder()
+            .add("host", popup.host).add("id", popup.id).build())
+        if (media) builder.header("Range", "bytes=0-524287")
+        client.newCall(builder.build()).execute().use { response ->
+            if (response.code in listOf(401, 403, 429)) throw AccessBlockedException()
+            if (!response.isSuccessful) throw IOException("Player HTTP ${response.code}")
+            val type = response.header("Content-Type").orEmpty()
+            val bytes = response.peekBody(524288).bytes()
+            val body = String(bytes, if (type.startsWith("video/", ignoreCase = true)) Charsets.ISO_8859_1 else Charsets.UTF_8)
+            // An included Cloudflare telemetry script is not itself a challenge page.
+            if (Regex("<title>\\s*(Just a moment|Attention Required)", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(body) || body.contains("id=\"challenge-form\"")) throw AccessBlockedException()
+            PlayerResponse(response.request.url.toString(), body, type)
+        }
+    }
+
     fun clearCache() {
         htmlCache.clear()
         runCatching { diskCache.evictAll() }
