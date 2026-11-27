@@ -1,125 +1,113 @@
-Task: Fix and Rebuild LK21 Scraper Using Captured Requests & Responses
+Task: Fix LK21 Multi-Stage Streaming Extraction
 
-The LK21 scraper still has reliability and data extraction issues. Investigate and fix it thoroughly using the captured website traffic stored in the "lk21-request/" directory.
+The LK21 streaming parser is still failing. Investigate and fix its multi-stage player loading mechanism using the captured request/response data in "lk21-request/".
 
-1. Analyze Captured Traffic
+1. Analyze the Popup Player Response
 
-First, inspect the entire "lk21-request/" directory.
+One captured response contains:
 
-It contains TXT files with actual HTTP requests and responses captured from the LK21 website.
+- Page title: "LK21 - Popup Player Video"
+- A JavaScript "DOMContentLoaded" handler.
+- An asynchronous POST request to "/api.php".
+- POST parameters: "host" and "id".
+- A JSON response containing "embedUrl".
+- The returned URL is assigned to "iframe#video-iframe".
+- An additional user-interaction overlay is present.
 
-Use these files as the primary reference to understand:
+This indicates that the initial player page does not necessarily contain the actual video source.
 
-- Actual request URLs and endpoints.
-- HTTP methods, headers, cookies, and query parameters.
-- Response formats and content structures.
-- HTML and JavaScript-generated data.
-- Data relationships between catalog, details, providers, and streaming pages.
-- How pagination, search, and filtering work.
+Investigate this mechanism and identify every subsequent request and response involved in loading the provider player.
 
-Do not assume the website structure based on old selectors or documentation. Derive the implementation from the captured data.
+2. Implement Multi-Stage Extraction
 
-2. Rebuild the Data Extraction Logic
+The scraper must understand the complete player-loading sequence:
 
-Fix the scraper to correctly extract and normalize real website data.
+1. Fetch and inspect the initial player page.
+2. Identify the provider host and player ID.
+3. Reproduce the documented page request and inspect its JavaScript behavior.
+4. Identify the "/api.php" request and its actual JSON response structure.
+5. Extract the returned "embedUrl".
+6. Inspect the provider iframe and its subsequent loading requests.
+7. Identify where actual stream metadata becomes available.
+8. Parse available stream and subtitle metadata into structured JSON.
 
-Cover all available features:
+Do not assume that "embedUrl" is the final HLS URL.
 
-- Homepage and featured catalogs.
-- Latest releases and popular titles.
-- Search results.
-- Categories, genres, and filters.
-- Pagination.
-- Movie and series details.
-- Metadata, posters, ratings, and descriptions.
-- Streaming provider information.
-- Available stream metadata and subtitles.
+3. Handle User-Interaction-Dependent Loading
 
-Ensure each scraper module uses the correct request parameters and response structure.
+Investigate whether the provider requires an actual user gesture before initializing playback or requesting stream metadata.
 
-3. Rhino Integration
+Compare network activity:
 
-The application uses Rhino for JavaScript-based data extraction.
+- Before interaction.
+- Immediately after interaction.
+- During player initialization.
+- When the actual video source becomes available.
 
-Review the existing Rhino implementation and fix it where necessary.
+Use Chromium/Playwright for development diagnostics and the existing Android WebView infrastructure when browser execution is required.
 
-- Use Rhino to execute the appropriate extraction scripts.
-- Correctly process captured HTML, JavaScript, and structured responses.
-- Extract dynamic data where applicable.
-- Normalize results into consistent JSON objects.
-- Ensure compatibility between Rhino and Android.
-- Avoid unnecessary JavaScript engine initialization.
-- Handle execution errors and malformed responses safely.
+Do not simulate ad clicks, follow advertising links, bypass anti-bot protections, or circumvent access restrictions. Only investigate legitimate player initialization behavior.
 
-Keep WebView as the browser-rendering layer when actual browser execution is required. Do not confuse Rhino with a full browser environment.
+4. Rhino Integration
 
-4. Request & Response Handling
+Use Rhino for extracting and processing JavaScript-generated metadata where appropriate.
 
-Reproduce the relevant captured requests in the scraper implementation.
+Important:
 
-Verify:
+- Rhino is not a browser and cannot independently execute DOM-dependent code.
+- Use WebView when DOM, iframe navigation, or actual browser execution is required.
+- Transfer extracted information through the existing JavaScript bridge.
+- Normalize the final results into the existing Kotlin stream models.
 
-- Required headers and request parameters.
-- Redirect handling.
-- Response encoding and character sets.
-- Content types.
-- Cookies and session-dependent responses.
-- Empty, malformed, and unexpected responses.
+5. Stream Validation
 
-Do not hardcode captured response bodies as application data. They are reference fixtures for understanding and testing the actual extraction logic.
+Support proper identification and validation of accessible stream metadata:
 
-Do not bypass authentication, anti-bot challenges, or other access restrictions.
+- HLS (".m3u8")
+- DASH (".mpd")
+- Progressive video sources
+- Subtitle URLs and language metadata
 
-5. Testing
+Distinguish between:
 
-Create automated tests using the captured TXT request/response files wherever possible.
+- Initial player URL.
+- Provider embed URL.
+- Actual media manifest URL.
+- Individual media segments.
 
-Test each extraction module against actual captured response samples.
+Never treat an iframe URL as a confirmed playable stream.
 
-Verify:
+6. Debugging & Tests
 
-- Correct JSON output.
-- Required fields are populated.
-- Missing fields are handled safely.
-- Pagination works correctly.
-- Search and filtering produce valid results.
-- Details and provider extraction work independently.
+Add detailed logs for each stage:
 
-Compare the extracted JSON against the original captured responses.
+"INITIAL_PAGE → API_RESPONSE → EMBED_URL → PROVIDER_PAGE → PLAYER_INITIALIZATION → STREAM_METADATA"
 
-6. Application Integration
+Use captured files in "lk21-request/" as test fixtures.
 
-Integrate the repaired scraper into the existing repository architecture.
+Test each stage independently and verify that failures are reported at the correct stage.
 
-Ensure all native application screens receive correctly structured data.
+Do not hardcode the captured "host", "id", or response data as production values. Extract them dynamically from each player page.
 
-Preserve existing:
+7. Preserve Existing Architecture
 
-- Jetpack Compose UI.
-- WebView scraping infrastructure.
-- Rhino integration.
-- Media3 player.
-- Room database.
-- Caching and navigation.
+- Keep the native Compose interface.
+- Keep WebView as an internal extraction engine.
+- Keep Rhino for appropriate JavaScript processing.
+- Preserve Media3 ExoPlayer integration.
+- Do not rewrite working catalog, search, details, or unrelated modules.
+- Respect access restrictions and do not bypass advertising, authentication, DRM, or anti-bot mechanisms.
 
-Do not rewrite unrelated modules or introduce mock functionality.
+Final Verification
 
-7. Final Verification
+Test the complete extraction pipeline using actual accessible responses.
 
-Run all relevant unit tests and:
+Run:
 
 "./gradlew testDebugUnitTest"
 
 "./gradlew assembleDebug"
 
-Provide a report containing:
+Report the exact root cause, request sequence, extraction results, supported formats, and remaining limitations.
 
-1. Problems discovered in the old scraper.
-2. Findings from "lk21-request/".
-3. Actual request/response structures identified.
-4. Rhino extraction changes.
-5. Modules and endpoints successfully tested.
-6. Remaining unsupported or inaccessible data.
-7. Build and test results.
-
-Important: The "lk21-request/" directory is the primary source of truth for this task. Thoroughly inspect its contents before modifying the scraper. Do not guess endpoint structures, invent selectors, or implement functionality without validating it against the captured data.
+Do not claim successful HLS extraction merely because the initial page or provider iframe loaded successfully.

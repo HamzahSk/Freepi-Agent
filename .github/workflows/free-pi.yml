@@ -47,6 +47,16 @@ on:
         type: choice
         options: [text, json]
         default: text
+      build_apk:
+        description: Build Android APK after agent run
+        type: boolean
+        required: false
+        default: true
+      abi:
+        description: ABI target for APK build
+        type: choice
+        options: [arm64-v8a, universal, armeabi-v7a, x86_64]
+        default: arm64-v8a
 
   workflow_call:
     inputs:
@@ -69,6 +79,14 @@ on:
         type: string
         required: false
         default: text
+      build_apk:
+        type: boolean
+        required: false
+        default: false
+      abi:
+        type: string
+        required: false
+        default: arm64-v8a
     secrets:
       FREEPI_TOKEN:
         required: true
@@ -227,3 +245,148 @@ jobs:
           name: free-pi-changes
           path: free-pi-changes/
           if-no-files-found: warn
+
+  build-apk:
+    name: Build APK (${{ inputs.abi || 'arm64-v8a' }})
+    needs: free-pi
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.build_apk) ||
+      (github.event_name == 'workflow_call' && inputs.build_apk)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    env:
+      ABI: ${{ inputs.abi || 'arm64-v8a' }}
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download agent changes
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: free-pi-changes
+          path: .agent-changes
+
+      - name: Apply agent file changes
+        run: |
+          set -euo pipefail
+          if [ -d ".agent-changes/files" ]; then
+            echo "Applying modified/added files from free-pi-changes/files/..."
+            cp -r .agent-changes/files/. .
+          fi
+
+          if [ -s ".agent-changes/deleted-files.txt" ]; then
+            echo "Removing files listed in deleted-files.txt..."
+            while IFS= read -r rel_path || [ -n "$rel_path" ]; do
+              rel_path="${rel_path#"${rel_path%%[![:space:]]*}"}"
+              rel_path="${rel_path%"${rel_path##*[![:space:]]}"}"
+              [ -n "$rel_path" ] || continue
+              rm -rf "$rel_path"
+              echo "Deleted: $rel_path"
+            done < ".agent-changes/deleted-files.txt"
+          fi
+
+          rm -rf .agent-changes
+
+      - name: Use a JDK that exists on the runner
+        run: |
+          PIN="/usr/lib/jvm/temurin-17-jdk-amd64"
+          if [ ! -d "$PIN" ]; then
+            echo "::warning::$PIN missing, using JAVA_HOME instead"
+            sed -i '/org\.gradle\.java\.home/d' gradle.properties
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-home-cache-cleanup: true
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36"
+
+      - name: Decode CI keystore (optional)
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          mkdir -p "$RUNNER_TEMP/signing"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing/release.jks"
+          {
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/signing/release.jks"
+            echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"
+            echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build release APK
+        run: |
+          ./gradlew --no-daemon --stacktrace :app:assembleRelease -Pabis="$ABI"
+
+      - name: Collect APK
+        id: apk
+        run: |
+          set -euo pipefail
+          OUT=app/build/outputs/apk/release
+          echo "--- built files ---"
+          find "$OUT" -name '*.apk' -printf '%f  %s bytes\n' | sort
+
+          APK=$(find "$OUT" -name "*${ABI}*.apk" | head -1 || true)
+          if [ -z "$APK" ]; then
+            APK=$(find "$OUT" -name '*.apk' ! -name '*unsigned*' | head -1 || true)
+          fi
+          [ -n "$APK" ] || { echo "::error::no APK produced"; exit 1; }
+
+          mkdir -p dist
+          NAME="freepi-stream-${ABI}.apk"
+          cp "$APK" "dist/$NAME"
+
+          SIZE_MB=$(( $(stat -c%s "dist/$NAME") / 1024 / 1024 ))
+          {
+            echo "name=$NAME"
+            echo "size_mb=$SIZE_MB"
+            echo "sha256=$(sha256sum "dist/$NAME" | cut -d' ' -f1)"
+          } | tee -a "$GITHUB_OUTPUT"
+
+      - name: Verify APK
+        run: |
+          set -euo pipefail
+          APK="dist/${{ steps.apk.outputs.name }}"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -1)
+          if [ -z "$BT" ]; then echo "::warning::no build-tools, skipping verification"; exit 0; fi
+          "$BT/apksigner" verify --print-certs "$APK" | head -20 || true
+          echo "--- package ---"
+          "$BT/aapt2" dump badging "$APK" | grep -E "package:|sdkVersion|targetSdkVersion|native-code" || true
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: freepi-stream-${{ env.ABI }}
+          path: dist/${{ steps.apk.outputs.name }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: APK Summary
+        run: |
+          {
+            echo "### APK ready"
+            echo
+            echo "| item | value |"
+            echo "| --- | --- |"
+            echo "| artifact | \`${{ steps.apk.outputs.name }}\` |"
+            echo "| abi | \`${{ env.ABI }}\` |"
+            echo "| size | ${{ steps.apk.outputs.size_mb }} MB |"
+            echo "| sha256 | \`${{ steps.apk.outputs.sha256 }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
