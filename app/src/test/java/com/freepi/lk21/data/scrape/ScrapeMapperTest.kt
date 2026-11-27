@@ -207,4 +207,72 @@ class ScrapeMapperTest {
         assertEquals("https://dramamu.lk21.de/series-x-episode-1/", detail.redirectUrl)
         assertNotNull(detail.related)
     }
+
+    @Test
+    fun `series info from season-data is mapped into the model`() {
+        val seasons = JSONArray().put(
+            JSONObject()
+                .put("number", 1)
+                .put(
+                    "episodes",
+                    JSONArray(listOf(
+                        JSONObject()
+                            .put("number", 1)
+                            .put("title", "VisionQuest - Season 1 Episode 1 (2026)")
+                            .put("slug", "visionquest-season-1-episode-1-2026"),
+                        JSONObject()
+                            .put("number", 2)
+                            .put("title", "VisionQuest - Season 1 Episode 2 (2026)")
+                            .put("slug", "visionquest-season-1-episode-2-2026"),
+                    ))
+                )
+        )
+        val data = JSONObject()
+            .put("title", "VisionQuest (2026)")
+            .put("sources", JSONArray())
+            .put("seasons", seasons)
+            .put("totalSeasons", 1)
+            .put("totalEpisodes", 8)
+            .put("firstSlug", "visionquest-season-1-episode-1-2026")
+            .put("latestSlug", "visionquest-season-1-episode-8-2026")
+            .put("nextSlug", "visionquest-season-1-episode-3-2026")
+            .put("currentSeason", 1)
+            .put("currentEpisode", 2)
+            .put("seriesSlug", "visionquest-2026")
+            .put("seriesTitle", "VisionQuest (2026)")
+
+        val detail = mapper.detail(data, "https://tv13.lk21online.de/visionquest-2026")
+
+        val series = detail.series
+        assertNotNull(series)
+        assertEquals(1, series!!.totalSeasons)
+        assertEquals(8, series.totalEpisodes)
+        assertEquals(2, series.episodes.size)
+        assertEquals("visionquest-season-1-episode-2-2026", series.episodes[1].slug)
+        assertEquals("visionquest-season-1-episode-1-2026", series.firstSlug)
+        assertEquals("visionquest-season-1-episode-8-2026", series.latestSlug)
+        assertEquals("visionquest-season-1-episode-3-2026", series.nextSlug)
+        assertEquals(1, series.currentSeason)
+        assertEquals(2, series.currentEpisode)
+        assertEquals("visionquest-2026", series.seriesSlug)
+    }
+
+    @Test
+    fun `series info is null when no season data exists`() {
+        val data = JSONObject()
+            .put("title", "A Movie (2024)")
+            .put("sources", JSONArray())
+        val detail = mapper.detail(data, "https://tv13.lk21official.cc/a-movie-2024/")
+        assertNull(detail.series)
+    }
+
+    @Test
+    fun `post id is carried through`() {
+        val data = JSONObject()
+            .put("title", "The Slightest Touch (2026)")
+            .put("sources", JSONArray())
+            .put("postId", "35308")
+        val detail = mapper.detail(data, "https://tv13.lk21official.cc/slightest-touch-2026")
+        assertEquals("35308", detail.postId)
+    }
 }

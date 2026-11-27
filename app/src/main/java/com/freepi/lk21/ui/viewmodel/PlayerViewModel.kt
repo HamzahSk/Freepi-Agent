@@ -142,7 +142,15 @@ class PlayerViewModel(
         _state.value = _state.value.copy(loadingDetail = true, error = null)
         viewModelScope.launch {
             try {
-                val detail = repository.detail(slug)
+                var detail = repository.detail(slug)
+                // A series hub (TVSeries) page lists no direct player sources;
+                // the playable content lives on the first episode page.
+                if (detail.sources.isEmpty()) {
+                    val firstSlug = detail.series?.firstSlug
+                    if (!firstSlug.isNullOrBlank()) {
+                        detail = repository.detail("/$firstSlug")
+                    }
+                }
                 val progress = repository.getProgress(detail.slug)
                 resumePositionMs = progress?.takeIf { !it.completed }?.positionMs ?: 0L
                 _state.value = _state.value.copy(

@@ -52,8 +52,11 @@ class WebViewCatalogDataSource(
 
     override suspend fun search(query: String, forceRefresh: Boolean): ListPage {
         val encoded = URLEncoder.encode(query.trim(), "UTF-8")
-        // The current theme answers on /?s=..., the classic one on /search.php?s=...
+        // The captured theme answers on /search/?s=... (search form action="/search",
+        // JSON-LD SearchAction urlTemplate .../search/?s={search_term_string}).
+        // The classic theme answered on /search.php?s=... - keep it as a fallback.
         val candidates = listOf(
+            client.absolute("/search/?s=$encoded"),
             client.absolute("/?s=$encoded"),
             client.absolute("/search.php?s=$encoded"),
         )
@@ -146,7 +149,7 @@ class HttpCatalogDataSource(
 
     override suspend fun search(query: String, forceRefresh: Boolean): ListPage {
         val encoded = URLEncoder.encode(query.trim(), "UTF-8")
-        return list("/search.php?s=$encoded", forceRefresh)
+        return list("/search/?s=$encoded", forceRefresh)
     }
 
     override suspend fun detail(slugOrUrl: String, forceRefresh: Boolean): MovieDetail {

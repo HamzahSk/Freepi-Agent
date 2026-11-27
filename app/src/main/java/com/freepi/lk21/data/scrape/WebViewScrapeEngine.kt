@@ -58,8 +58,8 @@ class WebViewScrapeEngine(
 
     companion object {
         const val USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36"
 
         private const val TAG = "FreepiScrape"
         private const val RETRY_DELAY_MS = 700L
@@ -178,7 +178,7 @@ class WebViewScrapeEngine(
                         "text/html,application/xhtml+xml,application/xml;q=0.9," +
                             "image/avif,image/webp,*/*;q=0.8",
                     )
-                    put("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+                    put("Accept-Language", "en-US,en;q=0.9,id;q=0.8")
                     put("Upgrade-Insecure-Requests", "1")
                     request.referer?.let { put("Referer", it) }
                     putAll(request.extraHeaders)

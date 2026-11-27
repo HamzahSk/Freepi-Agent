@@ -6,6 +6,9 @@ import com.freepi.lk21.data.model.HomeData
 import com.freepi.lk21.data.model.ListPage
 import com.freepi.lk21.data.model.MovieCard
 import com.freepi.lk21.data.model.MovieDetail
+import com.freepi.lk21.data.model.SeriesEpisode
+import com.freepi.lk21.data.model.SeriesInfo
+import com.freepi.lk21.data.model.SeriesSeason
 import com.freepi.lk21.data.model.StreamSource
 import com.freepi.lk21.data.model.SubtitleTrack
 import org.json.JSONArray
@@ -158,6 +161,8 @@ class ScrapeMapper {
             .takeIf { it.isNotBlank() }
             ?.let { absolutize(it, pageUrl) }
 
+        val seriesInfo = seriesInfo(data, pageUrl)
+
         return MovieDetail(
             slug = slugFromUrl(pageUrl).ifBlank {
                 title.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]+"), "-")
@@ -192,6 +197,65 @@ class ScrapeMapper {
             subtitles = subtitles,
             related = related,
             redirectUrl = redirect,
+            series = seriesInfo,
+            postId = data.optString("postId").takeIf { it.isNotBlank() },
+        )
+    }
+
+    /** Maps the captured-theme `#season-data` / `#watch-history-data` blocks. */
+    private fun seriesInfo(data: JSONObject, pageUrl: String): SeriesInfo? {
+        val seasons = data.optJSONArray("seasons")
+        val totalSeasons = data.optInt("totalSeasons", 0)
+        val totalEpisodes = data.optInt("totalEpisodes", 0)
+        val hasEpisodes = (0 until (seasons?.length() ?: 0)).any { i ->
+            (seasons?.optJSONObject(i)?.optJSONArray("episodes")?.length() ?: 0) > 0
+        }
+        if (!hasEpisodes && totalEpisodes == 0 && totalSeasons == 0) return null
+
+        val seasonList = ArrayList<SeriesSeason>()
+        if (seasons != null) {
+            for (i in 0 until seasons.length()) {
+                val season = seasons.optJSONObject(i) ?: continue
+                val number = season.optInt("number", 0)
+                val eps = season.optJSONArray("episodes") ?: continue
+                val episodes = ArrayList<SeriesEpisode>()
+                for (j in 0 until eps.length()) {
+                    val ep = eps.optJSONObject(j) ?: continue
+                    val slug = ep.optString("slug").trim()
+                    if (slug.isBlank()) continue
+                    episodes.add(
+                        SeriesEpisode(
+                            number = ep.optInt("number", j + 1),
+                            title = ep.optString("title").trim(),
+                            slug = slug,
+                        )
+                    )
+                }
+                if (episodes.isNotEmpty()) {
+                    seasonList.add(SeriesSeason(number = number, episodes = episodes))
+                }
+            }
+        }
+
+        val next = data.optString("nextSlug").trim().takeIf { it.isNotBlank() }
+        val prev = data.optString("prevSlug").trim().takeIf { it.isNotBlank() }
+        return SeriesInfo(
+            totalSeasons = totalSeasons.takeIf { it > 0 } ?: seasonList.size,
+            totalEpisodes = totalEpisodes.takeIf { it > 0 }
+                ?: seasonList.sumOf { it.episodes.size },
+            currentSeason = data.opt("currentSeason")?.let {
+                (it as? Int) ?: (it as? String)?.toIntOrNull()
+            },
+            currentEpisode = data.opt("currentEpisode")?.let {
+                (it as? Int) ?: (it as? String)?.toIntOrNull()
+            },
+            firstSlug = data.optString("firstSlug").trim().takeIf { it.isNotBlank() },
+            latestSlug = data.optString("latestSlug").trim().takeIf { it.isNotBlank() },
+            nextSlug = next,
+            prevSlug = prev,
+            seriesSlug = data.optString("seriesSlug").trim().takeIf { it.isNotBlank() },
+            seriesTitle = data.optString("seriesTitle").trim().takeIf { it.isNotBlank() },
+            seasons = seasonList,
         )
     }
 

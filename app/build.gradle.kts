@@ -135,6 +135,10 @@ dependencies {
     implementation("org.jsoup:jsoup:1.21.2")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")
+    // Rhino: pure-JVM JavaScript engine used for structured JSON-block extraction
+    // (season/watch-history/LD+JSON) and JS fallback helpers. It is NOT a browser;
+    // the hidden WebView stays the only DOM/rendering engine.
+    implementation("org.mozilla:rhino:1.7.15")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 

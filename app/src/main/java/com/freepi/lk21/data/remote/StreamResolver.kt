@@ -267,66 +267,13 @@ class StreamResolver(private val client: Lk21Client) : StreamProvider {
 }
 
 /**
- * Minimal implementation of the classic Dean Edwards p.a.c.k.e.r used by many
- * video hosts to hide their `sources` array.
+ * Classic Dean Edwards p.a.c.k.e.r deobfuscation used by many video hosts to
+ * hide their `sources` array. The unpacking itself is delegated to the shared
+ * Rhino engine ([JsExtractor]) so the exact captured wrapper
+ * `eval(function(p,a,c,k,e,d){...})` is executed by a real JS engine instead
+ * of a hand-rolled port.
  */
 object JsUnpacker {
 
-    private val EVAL_REGEX = Regex(
-        """eval\s*\(\s*function\s*\(\s*p\s*,\s*a\s*,\s*c\s*,\s*k\s*,\s*e\s*,\s*[dr]\s*\)\s*\{[\s\S]*?\}\s*\(\s*'((?:\\.|[^'])*)'\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*'((?:\\.|[^'])*)'\s*\.\s*split\s*\(\s*'\|'\s*\)\s*(?:,\s*\d+\s*,\s*\{[^}]*\})?\s*\)\s*\)""",
-        RegexOption.DOT_MATCHES_ALL
-    )
-
-    fun unpackAll(html: String): List<String> {
-        val results = ArrayList<String>()
-        for (match in EVAL_REGEX.findAll(html)) {
-            val payload = unescapeJs(match.groupValues[1])
-            val radix = match.groupValues[2].toIntOrNull() ?: 62
-            val count = match.groupValues[3].toIntOrNull() ?: 0
-            val words = unescapeJs(match.groupValues[4]).split('|').toMutableList()
-            while (words.size < count) words.add("")
-            results.add(unpack(payload, radix, count, words))
-        }
-        return results
-    }
-
-    private fun unpack(payload: String, radix: Int, count: Int, words: MutableList<String>): String {
-        for (i in 0 until words.size) {
-            if (words[i].isEmpty()) words[i] = encode(i, radix)
-        }
-        var result = payload
-        for (i in (count - 1) downTo 0) {
-            if (i >= words.size || words[i].isEmpty()) continue
-            val token = Regex.escape(encode(i, radix))
-            result = result.replace(Regex("\\b$token\\b"), words[i])
-        }
-        return result
-    }
-
-    /** JS `e(c)` from the packer: base-N digits, with a custom 36+ alphabet. */
-    private fun encode(c0: Int, radix: Int): String {
-        var c = c0
-        val sb = StringBuilder()
-        if (c >= radix) sb.append(encode(c / radix, radix))
-        val remainder = c % radix
-        sb.append(
-            if (remainder > 35) (remainder + 29).toChar()
-            else remainder.toString(36)
-        )
-        return sb.toString()
-    }
-
-    private fun unescapeJs(input: String): String {
-        var s = input
-        s = s.replace("\\'", "'").replace("\\\"", "\"").replace("\\\\", "\\")
-        s = s.replace("\\/", "/")
-        s = s.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t")
-        s = Regex("""\\x([0-9a-fA-F]{2})""").replace(s) {
-            it.groupValues[1].toInt(16).toChar().toString()
-        }
-        s = Regex("""\\u([0-9a-fA-F]{4})""").replace(s) {
-            it.groupValues[1].toInt(16).toChar().toString()
-        }
-        return s
-    }
+    fun unpackAll(html: String): List<String> = JsExtractor.unpackPacker(html)
 }

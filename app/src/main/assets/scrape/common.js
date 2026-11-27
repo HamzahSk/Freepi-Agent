@@ -92,8 +92,9 @@
     var t = String(raw || '').replace(/\s+/g, ' ').trim();
     t = t.split(' Film Subtitle')[0];
     t = t.split(' Sub Indo')[0];
-    t = t.replace(/^Nonton\s+/i, '');
-    t = t.replace(/^Streaming\s+/i, '');
+    t = t.split(' | Streaming')[0];
+    t = t.replace(/^(?:Lk21\s+Nonton|Nonton|Streaming)\s+/i, '');
+    t = t.replace(/\s*\|.*$/, '');
     return t.trim();
   }
 
@@ -202,7 +203,15 @@
     var ratingEl = el.querySelector('.rating [itemprop="ratingValue"], [itemprop="ratingValue"], .rating, .score');
     var rating = num(ratingEl ? text(ratingEl) : null);
     var quality = text(el.querySelector('.poster .label, .quality, .label-HD, .label-SD, .quality-badge, .poster .label-HD')) || null;
-    var duration = text(el.querySelector('.duration, .runtime, .episode strong, .episode, .video-duration')) || null;
+    // Series cards label "S.1" in .duration and "EPS 9" in .episode strong;
+    // movies label the runtime in .duration.
+    var epsEl = el.querySelector('.episode strong');
+    var duration = text(el.querySelector('.duration, .runtime, .video-duration')) || null;
+    if (epsEl) {
+      var eps = text(epsEl);
+      var seasonLabel = text(el.querySelector('.duration')) || '';
+      duration = ((seasonLabel && seasonLabel !== '') ? seasonLabel + ' \u00b7 ' : '') + eps + ' eps';
+    }
 
     return {
       slug: slug,
@@ -319,12 +328,11 @@
     }
     if (!nextUrl && totalPages === null) totalPages = current;
     if (!nextUrl && totalPages !== null && totalPages > current) {
-      // Fallback: construct /page/N+1 preserving any query string.
-      var base = window.location.pathname.replace(/\/page\/\d+\/?$/, '').replace(/\/+$/, '') || '';
+      // Fallback: construct /page/N+1 preserving the query string (?s=, filters).
+      var base = window.location.pathname.replace(/\/page\/\d+\/?$/, '').replace(/\/+$/, '');
       var query = window.location.search || '';
-      nextUrl = window.location.origin + '/' +
-        (base ? base.replace(/^\//, '') + '/' : '') + 'page/' + (current + 1) + '/' +
-        (query ? query.replace('?s=', '?s=') : '');
+      var path = ((base || '') + '/page/' + (current + 1) + '/').replace(/^\/+/, '');
+      nextUrl = window.location.origin + '/' + path + query;
     }
     if (totalPages === null) totalPages = current;
 

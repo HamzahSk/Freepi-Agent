@@ -18,6 +18,30 @@
       });
     }
 
+    // Captured theme (lk21-request/): sidebar .pop-movie-item widgets (most popular).
+    document.querySelectorAll('.pop-movie-item').forEach(function (item) {
+      var a = item.querySelector('a[href]') || null;
+      if (!a) return;
+      var href = a.getAttribute('href') || '';
+      var slug = F.slugOf(F.abs(href));
+      if (!slug || seen[slug]) return;
+      var img = item.querySelector('img');
+      var poster = null;
+      if (img) poster = img.getAttribute('data-src') || img.getAttribute('src');
+      seen[slug] = 1;
+      sections.popular.push({
+        slug: slug,
+        title: F.cleanTitle(F.text(item.querySelector('.pop-movie-title, h3')) || (img && img.getAttribute('alt')) || F.cleanTitle(F.text(a))),
+        url: F.abs(href),
+        poster: F.abs(poster),
+        rating: null,
+        quality: null,
+        duration: null,
+        genres: [],
+        year: F.text(item.querySelector('.pop-movie-year')) || null
+      });
+    });
+
     // New theme: .widget[data-type="latest-movies"] etc.
     document.querySelectorAll('.widget[data-type]').forEach(function (widget) {
       var type = (widget.getAttribute('data-type') || '').toLowerCase();
@@ -51,9 +75,39 @@
     var hero = document.querySelector('.featured .slider, .featured .swiper-wrapper, .hero-slider');
     if (hero) merge('featured', F.collectCards(hero));
 
-    // Latest from the main post grid (list-style home).
+    // Latest from the main post grid (list-style home) and the captured
+    // theme's "Nonton Film Terbaru" grid (.video-list li / main .column).
     var mainGrid = document.querySelector('#post-container, .gallery-grid, main');
-    if (mainGrid && !sections.latest.length) merge('latest', F.collectCards(mainGrid).slice(0, 20));
+    if (mainGrid && !sections.latest.length) {
+      var gridCards = F.collectCards(mainGrid);
+      if (gridCards.length) {
+        merge('latest', gridCards.slice(0, 24));
+      } else {
+        // Captured theme: <li><a href="/slug"> with .video-info/.video-title.
+        var videoItems = mainGrid.querySelectorAll('.video-info, .video-list li, .column li');
+        videoItems.forEach(function (el) {
+          var a = el.querySelector('a[href]') || (el.tagName === 'A' ? el : null);
+          if (!a) return;
+          var href = a.getAttribute('href') || '';
+          var slug = F.slugOf(F.abs(href));
+          if (!slug || seen[slug]) return;
+          var img = a.querySelector('img');
+          if (!img) return;
+          seen[slug] = 1;
+          sections.latest.push({
+            slug: slug,
+            title: F.cleanTitle(F.text(el.querySelector('.video-title, .poster-title, h3')) || (img && img.getAttribute('alt')) || F.cleanTitle(F.text(a))),
+            url: F.abs(href),
+            poster: F.abs(img.getAttribute('data-src') || img.getAttribute('src')),
+            rating: F.num(F.text(el.querySelector('.rating'))),
+            quality: F.text(el.querySelector('.label-HD, .quality')) || null,
+            duration: F.text(el.querySelector('.video-year, .year')) || null,
+            genres: [],
+            year: F.text(el.querySelector('.video-year, .year')) || null
+          });
+        });
+      }
+    }
 
     // Absolute fallback: the entire document (only if nothing matched found).
     var total = sections.featured.length + sections.popular.length + sections.latest.length +

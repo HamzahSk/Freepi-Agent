@@ -232,12 +232,22 @@
       title = F.cleanTitle(ld.partOfSeries.name || '');
     }
 
+    // Hero poster: the captured theme puts it inside the `.detail`/`.movie-info`
+    // meta block. `img[itemprop=image]` is intentionally NOT used here - every
+    // related card carries that attribute and it would win by document order.
     var posterRel = document.querySelector(
-      '#movie-detail img.img-thumbnail, .detail img, .content-poster img, .poster img, ' +
-      'img[itemprop="image"], .content-poster img'
+      '.movie-info picture img, .content-left picture img, .detail a img, .meta-info a img, ' +
+      '#movie-detail img.img-thumbnail, .content-poster img'
     );
     var poster = '';
     if (posterRel) poster = posterRel.getAttribute('data-src') || posterRel.getAttribute('src') || '';
+    if (!poster) {
+      var posterLink = document.querySelector('.movie-info a[href*="poster"], .detail a[href*="poster"], a[href*="poster"][target="_blank"]');
+      if (posterLink) {
+        var pimg = posterLink.querySelector('img');
+        if (pimg) poster = pimg.getAttribute('data-src') || pimg.getAttribute('src') || '';
+      }
+    }
     if (!poster) {
       var ogImg = document.querySelector('meta[property="og:image"]');
       if (ogImg) poster = ogImg.getAttribute('content') || '';
@@ -337,33 +347,62 @@
     var prevSlug = '';
     var currentSeason = watch.current_season !== undefined ? parseInt(watch.current_season, 10) : null;
     var currentEp = watch.current_eps !== undefined ? parseInt(watch.current_eps, 10) : null;
-    if (nextSlug) {
-      var epsNav = document.querySelectorAll('.player-action, .eps-nav, ul, ol');
-      // leave prev unset unless page provides explicit prev.
-    }
     var seriesSlug = '';
     var seriesTitle = '';
-    var seriesLink = document.querySelector('.detail p a[href*=""]');
-    document.querySelectorAll('.detail p').forEach(function (p) {
-      if (!seriesSlug) {
-        var a = p.querySelector('a[href]');
-        var span = p.querySelector('span');
-        if (a && span && /series/i.test(F.text(span))) {
-          var href = a.getAttribute('href') || '';
-          var s = F.slugOf(F.abs(href));
-          if (s) { seriesSlug = s; seriesTitle = F.text(a); }
-        }
+    document.querySelectorAll('.detail p, .meta-info p').forEach(function (p) {
+      if (seriesSlug) return;
+      var a = p.querySelector('a[href]');
+      var span = p.querySelector('span');
+      if (a && span && /series/i.test(F.text(span))) {
+        var href = a.getAttribute('href') || '';
+        var s = F.slugOf(F.abs(href));
+        if (s) { seriesSlug = s; seriesTitle = F.text(a); }
       }
     });
+    // Also honour a JSON-LD partOfSeries for TVEpisode pages.
+    if (!seriesSlug && ld && ld.partOfSeries && ld.partOfSeries.url) {
+      var ps = F.slugOf(F.abs(ld.partOfSeries.url));
+      if (ps) { seriesSlug = ps; seriesTitle = ld.partOfSeries.name || ''; }
+    }
 
     var firstSlug = '';
     var latestSlug = '';
     document.querySelectorAll('.movie-action a[href]').forEach(function (a) {
       var t = F.text(a);
       var href = a.getAttribute('href') || '';
-      if (/play\s*awal/i.test(t) && !firstSlug) firstSlug = F.slugOf(F.abs(href)) || '';
-      if (/play\s*terbaru/i.test(t) && !latestSlug) latestSlug = F.slugOf(F.abs(href)) || '';
+      if (/play\s*awal|mulai\s*putar/i.test(t) && !firstSlug) firstSlug = F.slugOf(F.abs(href)) || '';
+      if (/play\s*terbaru|episode\s*terbaru/i.test(t) && !latestSlug) latestSlug = F.slugOf(F.abs(href)) || '';
     });
+    // Series hub “Terbaru: Season 1 Episode 8” info row -> latestSlug.
+    if (!latestSlug) {
+      document.querySelectorAll('.meta-info p, .detail p').forEach(function (p) {
+        var span = p.querySelector('span');
+        var a = p.querySelector('a[href]');
+        if (span && a && /terbaru|latest/i.test(F.text(span))) {
+          var s2 = F.slugOf(F.abs(a.getAttribute('href')));
+          if (s2) latestSlug = s2;
+        }
+      });
+    }
+
+    // Episode navigation links inside .player-action (.action-right):
+    // <a>EPS 1</a> <li>EPS 2</li> <a>EPS 3</a>. The anchor before the current
+    // episode is the previous one, the anchor after it the next one. These
+    // always win for prev; watch.next is a fallback for next.
+    var epsSlugs = [];
+    document.querySelectorAll('.player-action .action-right li a[href]').forEach(function (a) {
+      var s3 = F.slugOf(F.abs(a.getAttribute('href')));
+      if (s3) epsSlugs.push(s3);
+    });
+    if (epsSlugs.length > 0 && !prevSlug) prevSlug = epsSlugs[0];
+    if (epsSlugs.length > 1 && !nextSlug) nextSlug = epsSlugs[1];
+
+    // When there is no explicit Play Awal / Play Terbaru button (episode
+    // pages), fall back to the season list order.
+    if (flatten.length > 0) {
+      if (!firstSlug) firstSlug = flatten[0].slug || '';
+      if (!latestSlug) latestSlug = flatten[flatten.length - 1].slug || '';
+    }
 
     var sources = gatherSources();
     var subtitles = F.subtitlesFromHtml();

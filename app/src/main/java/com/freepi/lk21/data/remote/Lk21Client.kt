@@ -24,13 +24,15 @@ class Lk21Client(cacheDir: File) {
 
     companion object {
         val BASE_URLS = listOf(
+            // Captured hosts (lk21-request/) first, then the known mirrors.
             "https://tv13.lk21official.cc",
+            "https://tv.lk21online.de",
             "https://tv.lk21official.cc",
             "https://tv6.lk21.am.in",
         )
         const val USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36"
 
         private val CHALLENGE_MARKERS = listOf(
             "Just a moment...",
@@ -59,7 +61,7 @@ class Lk21Client(cacheDir: File) {
                     "Accept",
                     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
                 )
-                .header("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+                .header("Accept-Language", "en-US,en;q=0.9,id;q=0.8")
                 .header("Cache-Control", if (original.cacheControl.noCache) "no-cache" else "max-age=300")
                 .header("Upgrade-Insecure-Requests", "1")
                 .build()

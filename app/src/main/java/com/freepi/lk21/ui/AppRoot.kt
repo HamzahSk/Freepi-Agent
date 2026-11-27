@@ -168,6 +168,7 @@ fun AppRoot() {
                         navController.navigate("player/${Uri.encode(detail.slug)}?source=$index")
                     },
                     onMovieClick = { navController.navigateDetail(it.slug) },
+                    onOpenEpisode = { slug -> navController.navigate("detail/${Uri.encode(slug)}") },
                     onToggleFavorite = vm::toggleFavorite,
                     onRetry = { vm.load(forceRefresh = true) },
                     onRemoveHistory = vm::removeFromHistory,

@@ -54,6 +54,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.freepi.lk21.data.model.MovieCard
 import com.freepi.lk21.data.model.MovieDetail
+import com.freepi.lk21.data.model.SeriesEpisode
 import com.freepi.lk21.ui.components.ChipLabel
 import com.freepi.lk21.ui.components.EmptyState
 import com.freepi.lk21.ui.components.ErrorState
@@ -75,6 +76,7 @@ fun DetailScreen(
     onBack: () -> Unit,
     onPlay: (MovieDetail, Int) -> Unit,
     onMovieClick: (MovieCard) -> Unit,
+    onOpenEpisode: (String) -> Unit,
     onToggleFavorite: () -> Unit,
     onRetry: () -> Unit,
     onRemoveHistory: () -> Unit,
@@ -92,6 +94,7 @@ fun DetailScreen(
             onBack = onBack,
             onPlay = onPlay,
             onMovieClick = onMovieClick,
+            onOpenEpisode = onOpenEpisode,
             onToggleFavorite = onToggleFavorite,
             onRemoveHistory = onRemoveHistory,
         )
@@ -108,6 +111,7 @@ private fun DetailContent(
     onBack: () -> Unit,
     onPlay: (MovieDetail, Int) -> Unit,
     onMovieClick: (MovieCard) -> Unit,
+    onOpenEpisode: (String) -> Unit,
     onToggleFavorite: () -> Unit,
     onRemoveHistory: () -> Unit,
 ) {
@@ -236,7 +240,7 @@ private fun DetailContent(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    enabled = detail.sources.isNotEmpty(),
+                    enabled = detail.sources.isNotEmpty() || detail.series?.firstSlug != null,
                 ) {
                     Icon(Icons.Filled.PlayArrow, null)
                     Spacer(Modifier.width(6.dp))
@@ -254,6 +258,10 @@ private fun DetailContent(
                         Text("Trailer", color = MaterialTheme.colorScheme.onBackground)
                     }
                 }
+            }
+            val seriesForPicker = detail.series
+            if (seriesForPicker != null && seriesForPicker.seasons.isNotEmpty()) {
+                EpisodePicker(detail, onOpenEpisode)
             }
         }
         if (resumeMs > 5_000 && !completed) {
@@ -473,4 +481,64 @@ private fun formatTime(ms: Long): String {
     val m = totalSeconds / 60
     val s = totalSeconds % 60
     return "%d:%02d".format(m, s)
+}
+
+@Composable
+private fun EpisodePicker(detail: MovieDetail, onOpenEpisode: (String) -> Unit) {
+    val series = detail.series ?: return
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(
+            "Episodes",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Spacer(Modifier.height(6.dp))
+        if (series.seasons.size > 1) {
+            Text(
+                "${series.totalSeasons} seasons \u00b7 ${series.totalEpisodes} episodes",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+            )
+        }
+        series.seasons.forEach { season ->
+            if (series.seasons.size > 1) {
+                Text(
+                    "Season ${season.number}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                )
+            }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(season.episodes) { episode ->
+                    DetailEpisodeChip(episode, onOpenEpisode)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailEpisodeChip(episode: SeriesEpisode, onOpenEpisode: (String) -> Unit) {
+    Surface(
+        onClick = { onOpenEpisode(episode.slug) },
+        color = SurfaceElevated,
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.width(140.dp),
+    ) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Text(
+                "E${episode.number}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Primary,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                episode.title.ifBlank { "Episode ${episode.number}" },
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }

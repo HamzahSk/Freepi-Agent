@@ -6,6 +6,9 @@ import com.freepi.lk21.data.model.HomeData
 import com.freepi.lk21.data.model.ListPage
 import com.freepi.lk21.data.model.MovieCard
 import com.freepi.lk21.data.model.MovieDetail
+import com.freepi.lk21.data.model.SeriesEpisode
+import com.freepi.lk21.data.model.SeriesInfo
+import com.freepi.lk21.data.model.SeriesSeason
 import com.freepi.lk21.data.model.StreamSource
 import com.freepi.lk21.data.model.SubtitleTrack
 import org.json.JSONArray
@@ -76,7 +79,11 @@ class Lk21Parser {
         if (raw.isNullOrBlank()) return ""
         return raw
             .substringBefore(" Film Subtitle")
-            .substringBefore(" Nonton ")
+            .substringBefore(" Sub Indo")
+            .substringBefore(" | Streaming")
+            .replace(Regex("^Lk21\\s+Nonton\\s+", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("^Nonton\\s+", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("^Streaming\\s+", RegexOption.IGNORE_CASE), "")
             .replace(Regex("\\s+"), " ")
             .trim()
     }
@@ -90,17 +97,24 @@ class Lk21Parser {
         el.tagName() == "article" ||
             el.hasClass("featured-item") ||
             el.hasClass("item") ||
+            el.hasClass("slider") ||
             el.hasClass("slider-item") ||
             el.hasClass("item-media") ||
-            el.hasClass("widget-item")
+            el.hasClass("widget-item") ||
+            el.hasClass("pop-movie-item")
 
     // -------------------------------------------------------------------- cards
 
     fun parseCards(root: Element): List<MovieCard> {
         val out = LinkedHashMap<String, MovieCard>()
         val base = root.baseUri().ifBlank { "https://tv13.lk21official.cc/" }
-        for (anchor in root.select("a[rel=bookmark]")) {
-            val href = normalizeUrl(anchor.attr("href"), base) ?: continue
+        // The captured theme links with a[itemprop=url] (li.slider > article),
+        // the classic theme with a[rel=bookmark].
+        val anchors = (root.select("a[rel=bookmark]") + root.select("a[itemprop=url]")).distinct()
+        for (anchor in anchors) {
+            val rawHref = anchor.attr("href")
+            if (rawHref.isBlank() || rawHref.startsWith("javascript:") || rawHref == "#") continue
+            val href = normalizeUrl(rawHref, base) ?: continue
             val slug = slugOf(href) ?: continue
             if (out.containsKey(slug)) continue
 
@@ -109,29 +123,36 @@ class Lk21Parser {
                 ?: anchor.parents().firstOrNull { it.hasClass("row") }
                 ?: anchor
 
-            val img = container.selectFirst("img[src]")
-                ?: anchor.selectFirst("img[src]")
-            val title = cleanTitle(
+            var img = container.selectFirst("img[src], img[data-src]")
+                ?: anchor.selectFirst("img[src], img[data-src]")
+            var title = cleanTitle(
                 anchor.attr("title").ifBlank {
-                    img?.attr("alt").orEmpty().ifBlank { anchor.text() }
+                    container.selectFirst(".poster-title, .grid-title, .entry-title, .video-title, .pop-movie-title, h1, h2, h3")
+                        ?.text().orEmpty().ifBlank { img?.attr("alt").orEmpty() }
                 }
             ).ifBlank {
-                anchor.text().ifBlank { img?.attr("alt").orEmpty() }
+                container.selectFirst(".poster-title, .grid-title, .entry-title, .video-title, h1, h2, h3")?.text()
+                    ?.ifBlank { anchor.text() }
+                    ?: anchor.text().ifBlank { img?.attr("alt").orEmpty() }
             }
             if (title.isBlank()) continue
 
             val poster = normalizeUrl(
-                img?.attr("src").orEmpty()
-                    .ifBlank { img?.attr("data-src").orEmpty() },
+                img?.attr("data-src").orEmpty()
+                    .ifBlank { img?.attr("src").orEmpty() },
                 base
             )
             val rating = firstNumber(container.selectFirst(".rating")?.text())
-            val quality = container.selectFirst(".quality")?.text()?.trim()?.takeIf { it.isNotBlank() }
+            val quality = container.selectFirst(".quality, .label-HD")?.text()?.trim()?.takeIf { it.isNotBlank() }
             val duration = container.selectFirst(".duration")?.text()?.trim()?.takeIf { it.isNotBlank() }
             val genres = container.select("a[href*=/genre/]").mapNotNull { g ->
                 g.text().trim().takeIf { it.isNotBlank() }
-            }.distinct().take(3)
+            }.flatMap { it.split(",") }
+                .map { it.trim() }
+                .filter { it.isNotBlank() && it.length < 40 }
+                .distinct().take(3)
             val year = Regex("""\((\d{4})\)""").find(title)?.groupValues?.getOrNull(1)
+                ?: container.selectFirst(".year, .video-year")?.text()?.trim()?.takeIf { it.matches(Regex("""\d{4}""")) }
 
             out[slug] = MovieCard(
                 slug = slug,
@@ -237,65 +258,108 @@ class Lk21Parser {
     // ------------------------------------------------------------------- detail
 
     fun parseDetail(doc: Document, url: String): MovieDetail {
-        val ld = findMovieJsonLd(doc)
+        val ld = findContentJsonLd(doc)
         val meta = parseMetaMap(doc)
+        val html = doc.outerHtml().replace("\\/", "/")
+        val watch = JsExtractor.watchHistory(html)
+        val postId = watch?.optString("id")?.takeIf { it.isNotBlank() }
 
         val title = cleanTitle(
-            ld?.optString("name").orEmpty().ifBlank {
-                doc.selectFirst("#movie-detail .post-header h2, .post-header h2, h1")?.text()
-                    ?: doc.title().substringBefore("Nonton").substringBefore("Lk21")
-            }
-        )
+            doc.selectFirst(".movie-info h1, #movie-detail .post-header h2, .post-header h2, h1")?.text()
+                ?: (watch?.optString("title")?.let {
+                    "$it" + (watch.optString("year").takeIf { y -> y.isNotBlank() }?.let { " ($it)" } ?: "")
+                })
+                ?: ld?.optString("name").orEmpty()
+                ?: doc.title()
+        ).ifBlank { "Untitled" }
+
         val poster = normalizeUrl(
-            doc.selectFirst("#movie-detail img.img-thumbnail")?.attr("src")
-                ?: ld?.optString("image").orEmpty().ifBlank { null },
+            doc.select(".detail.hidden a img, .detail a img, .movie-info a[href*=\"poster.assetsy\"] img, img[itemprop=\"image\"]")
+                .firstOrNull { isPosterImage(it, title) }
+                ?.let { it.attr("data-src").ifBlank { it.attr("src") } }
+                ?: doc.selectFirst("#movie-detail img.img-thumbnail")?.attr("src")
+                ?: doc.selectFirst("meta[property=\"og:image\"]")?.attr("content")
+                ?: ld?.optString("image").orEmpty()
+                ?: watch?.optString("poster").orEmpty()
+                ?: "",
             url
         )
         val backdrop = poster
 
         val synopsis = parseSynopsis(doc, title)
         val rating = firstNumber(
-            ld?.optJSONObject("aggregateRating")?.optString("ratingValue")
+            doc.selectFirst(".rating-number")?.attr("data-base-rating")
+                ?: watch?.optString("rating")
+                ?: ld?.optJSONObject("aggregateRating")?.optString("ratingValue")
                 ?: meta["IMDb"]
         )
-        val ratingCount = ld?.optJSONObject("aggregateRating")?.optString("reviewCount")
+        val ratingCount = doc.selectFirst(".rating-users")?.attr("data-base-votes")
+            ?.takeIf { it.isNotBlank() }
+            ?: ld?.optJSONObject("aggregateRating")?.optString("reviewCount")
             ?.takeIf { it.isNotBlank() }
             ?: meta["IMDb"]?.let { Regex("""from\s+([\d.,]+)""").find(it)?.groupValues?.get(1) }
 
-        val genres = ld?.optJSONArray("genre")?.toStringList()
-            ?: splitValues(meta["Genre"])
-        val countries = splitValues(meta["Negara"])
+        val tags = doc.select(".tag-list .tag a, .tag-list a, .tag a[href]").mapNotNull { a ->
+            val href = a.attr("href")
+            val type = href.trim('/').split('/').firstOrNull { it.isNotBlank() } ?: ""
+            val name = a.text().trim()
+            if (name.isNotBlank()) type to name else null
+        }
+        val genres = tags.filter { it.first == "genre" }.map { it.second }.ifEmpty {
+            ld?.optJSONArray("genre")?.toStringList().orEmpty()
+        }.ifEmpty { splitValues(meta["Genre"]) }
+        val countries = tags.filter { it.first == "country" }.map { it.second }.ifEmpty {
+            splitValues(meta["Negara"])
+        }
         val directors = ld?.optJSONArray("director")?.toStringList()
             ?: splitValues(meta["Sutradara"])
-        val cast = splitValues(meta["Bintang film"])
-        val quality = splitValues(meta["Kualitas"]).firstOrNull()
+        val cast = ld?.optJSONArray("actor")?.toStringList()
+            ?: splitValues(meta["Bintang film"] ?: meta["Bintang Film"])
+        val translator = meta["Subtitle"]?.takeIf { it.isNotBlank() }
 
-        val durationText = meta["Durasi"]
+        // info tags: [17+, WEBDL|1080p|1h 42m, West, Ongoing] -> quality/duration.
+        val infoTags = doc.select(".info-tag span").mapNotNull { it.text().trim().takeIf { t -> t.isNotBlank() } }
+        val quality = infoTags.firstOrNull {
+            Regex("""WEBDL|WEB-DL|WEBRip|BluRay|BDRip|HDCAM|HDTS|HDRip|CAM|DVD|1080p|720p|480p""", RegexOption.IGNORE_CASE)
+                .containsMatchIn(it)
+        }
+        val durationText = infoTags.firstOrNull {
+            Regex("""\d{1,2}:\d{2}|\d+\s*(?:h|jam|min|menit)\b""", RegexOption.IGNORE_CASE)
+                .containsMatchIn(it) && !it.matches(Regex("""\d{3,4}"""))
+        } ?: watch?.optString("runtime")?.takeIf { it.isNotBlank() }
         val durationMs = ld?.optString("duration")?.let(::parseIsoDuration)
             ?: durationText?.let(::parseIndonesianDuration)
+            ?: durationText?.let(::parseClockDuration)
 
-        val year = ld?.optString("dateCreated")?.take(4)?.takeIf { it != "null" }
+        val year = watch?.optString("year")?.takeIf { it.matches(Regex("""\d{4}""")) }
+            ?: (ld?.optString("dateCreated")?.let { Regex("""(?:19|20)\d{2}""").find(it)?.value })
+            ?: (ld?.optString("datePublished")?.let { Regex("""(?:19|20)\d{2}""").find(it)?.value })
             ?: Regex("""\((\d{4})\)""").find(title)?.groupValues?.get(1)
             ?: Regex("""(?:19|20)\d{2}""").find(meta["Diterbitkan"].orEmpty())?.value
 
         val imdbUrl = ld?.optString("sameAs").orEmpty()
-        val imdbId = Regex("""tt\d+""").find(imdbUrl)?.value
-            ?: Regex("""tt\d+""").find(doc.outerHtml())?.value
+        val imdbId = Regex("""tt\d+""").find(imdbUrl)?.value ?: Regex("""tt\d+""").find(html)?.value
 
         val sources = parseSources(doc, url)
-        val subtitles = parseSubtitleTracks(doc.outerHtml().replace("\\/", "/"), url)
-        val relatedSection = doc.selectFirst("#related")?.parents()
-            ?.firstOrNull { it.tagName() == "li" }
-        val related = relatedSection?.let { parseCards(it) }.orEmpty()
-            .filter { it.slug != slugOf(url) }
+        val subtitles = parseSubtitleTracks(html, url)
+        val relatedRaw = doc.select(".mob-related-video .sliders li.slider, .mob-related-series .sliders li.slider, #related .sliders li.slider")
+        val related = if (relatedRaw.isNotEmpty()) {
+            val container = Element("div")
+            relatedRaw.forEach { container.appendChild(it.clone()) }
+            parseCards(container)
+        } else {
+            parseCards(doc)
+        }.filter { it.slug != slugOf(url) }.distinctBy { it.slug }.take(24)
 
         val trailer = doc.selectFirst(
-            "a.fancybox[href*=youtube], a[href*=youtube.com/watch], a[href*=youtu.be]"
-        )?.attr("href")
+            "a.yt-lightbox[href*=\"youtube\"], a.fancybox[href*=\"youtube\"], a[href*=\"youtube.com/watch\"], a[href*=\"youtu.be\"], .trailer-series iframe, iframe[src*=\"youtube.com/embed\"]"
+        )?.let { it.attr("src").ifBlank { it.attr("href") } }
+
+        val seriesInfo = parseSeriesInfo(doc, watch)
 
         return MovieDetail(
             slug = slugOf(url) ?: title.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]+"), "-"),
-            title = title.ifBlank { "Untitled" },
+            title = title,
             url = url,
             poster = poster,
             backdrop = backdrop,
@@ -306,46 +370,185 @@ class Lk21Parser {
             rating = rating,
             ratingCount = ratingCount,
             imdbId = imdbId,
-            quality = quality ?: ld?.optString("contentRating")?.takeIf { it.isNotBlank() },
+            quality = quality ?: splitValues(meta["Kualitas"]).firstOrNull(),
             countries = countries,
             genres = genres,
             directors = directors,
             cast = cast,
-            translator = meta["Penerjemah"],
-            published = meta["Diterbitkan"] ?: ld?.optString("datePublished"),
-            uploaded = meta["Diunggah"],
-            trailerUrl = trailer,
+            translator = translator,
+            published = meta["Diterbitkan"] ?: meta["Release"] ?: ld?.optString("datePublished") ?: ld?.optString("dateCreated"),
+            uploaded = meta["Updated"] ?: meta["Diunggah"],
+            trailerUrl = trailer?.let { normalizeUrl(it, url) },
             sources = sources,
             subtitles = subtitles,
             related = related,
+            series = seriesInfo,
+            postId = postId,
         )
     }
 
-    private fun findMovieJsonLd(doc: Document): JSONObject? {
+    /** Captured-theme: `#season-data` + `#watch-history-data` + nav links. */
+    private fun parseSeriesInfo(doc: Document, watch: JSONObject?): SeriesInfo? {
+        // 1) season-data JSON (the definitive episode list on the series hub
+        //    and on every episode page - parsed with Rhino).
+        val seasons = ArrayList<SeriesSeason>()
+        val seasonJson = JsExtractor.seasonData(doc.outerHtml())
+        if (seasonJson != null) {
+            for (key in seasonJson.keys()) {
+                val list = seasonJson.optJSONArray(key) ?: continue
+                val episodes = ArrayList<SeriesEpisode>()
+                for (i in 0 until list.length()) {
+                    val item = list.optJSONObject(i) ?: continue
+                    val slug = item.optString("slug").trim()
+                    if (slug.isBlank()) continue
+                    episodes.add(
+                        SeriesEpisode(
+                            number = item.optInt("episode_no", i + 1),
+                            title = item.optString("title"),
+                            slug = slug,
+                        )
+                    )
+                }
+                if (episodes.isNotEmpty()) {
+                    seasons.add(SeriesSeason(number = key.toIntOrNull() ?: 0, episodes = episodes))
+                }
+            }
+        }
+        seasons.sortBy { it.number }
+        val hasSeasonData = seasons.isNotEmpty()
+
+        val firstSlug = seasons.firstOrNull()
+            ?.episodes?.firstOrNull()?.slug
+        val latestSlug = seasons.lastOrNull()
+            ?.episodes?.lastOrNull()?.slug
+
+        // A movie page may still carry a watch-history block (id/title/rating/
+        // poster), but without season/episode data it is not a TV series.
+        val hasEpisodeMeta = (watch?.optInt("total_eps") ?: 0) > 0 ||
+            (watch?.optInt("total_season") ?: 0) > 0 ||
+            watch?.has("current_season") == true ||
+            watch?.has("current_eps") == true
+        if (!hasSeasonData && !hasEpisodeMeta) return null
+
+        val totalSeasons = (watch?.optInt("total_season") ?: 0).takeIf { it > 0 } ?: seasons.size
+        val totalEpisodes = (watch?.optInt("total_eps") ?: 0).takeIf { it > 0 }
+            ?: seasons.sumOf { it.episodes.size }
+        val currentSeason = watch?.optString("current_season")?.toIntOrNull()
+        val currentEpisode = watch?.optString("current_eps")?.toIntOrNull()
+
+        // Episode navigation: previous/next from .player-action .action-right
+        // (the anchor before the current episode, then the one after it). This
+        // wins over the watch payload for prev; next prefers watch.next.
+        var prevSlug: String? = null
+        var nextSlug: String? = watch?.optString("next")?.takeIf { it.isNotBlank() }
+        val epsLinks = doc.select(".player-action .action-right li a[href]")
+            .mapNotNull { slugOf(normalizeUrl(it.attr("href"), doc.baseUri()) ?: "") }
+            .filter { it.isNotBlank() }
+        if (epsLinks.isNotEmpty()) prevSlug = epsLinks.first()
+        if (epsLinks.size > 1 && nextSlug.isNullOrBlank()) nextSlug = epsLinks[1]
+
+        val seriesSlug = doc.select(".detail p").mapNotNull { p ->
+            val span = p.selectFirst("span")
+            val a = p.selectFirst("a[href]")
+            if (span != null && a != null && Regex("series", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(span.text()))
+                slugOf(normalizeUrl(a.attr("href"), doc.baseUri()) ?: "")
+            else null
+        }.firstOrNull()
+        val seriesTitle = doc.select(".detail p").mapNotNull { p ->
+            val span = p.selectFirst("span")
+            val a = p.selectFirst("a[href]")
+            if (span != null && a != null && Regex("series", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(span.text())) a.text() else null
+        }.firstOrNull()
+
+        val playAwal = doc.select(".movie-action a[href]").firstOrNull { a ->
+            Regex("play\\s*awal", RegexOption.IGNORE_CASE).containsMatchIn(a.text())
+        }?.attr("href")?.let { slugOf(normalizeUrl(it, doc.baseUri()) ?: "") }
+        val playTerbaru = doc.select(".movie-action a[href]").firstOrNull { a ->
+            Regex("play\\s*terbaru", RegexOption.IGNORE_CASE).containsMatchIn(a.text())
+        }?.attr("href")?.let { slugOf(normalizeUrl(it, doc.baseUri()) ?: "") }
+
+        return SeriesInfo(
+            totalSeasons = totalSeasons,
+            totalEpisodes = totalEpisodes,
+            currentSeason = currentSeason,
+            currentEpisode = currentEpisode,
+            firstSlug = firstSlug ?: playAwal,
+            latestSlug = latestSlug ?: playTerbaru,
+            nextSlug = nextSlug,
+            prevSlug = prevSlug,
+            seriesSlug = seriesSlug,
+            seriesTitle = seriesTitle,
+            seasons = seasons,
+        )
+    }
+
+    /** Finds the Movie / TVSeries / TVEpisode JSON-LD node anywhere in the doc. */
+    private fun findContentJsonLd(doc: Document): JSONObject? {
         for (script in doc.select("script[type=application/ld+json]")) {
             val text = script.data().trim()
-            if (!text.contains("\"Movie\"")) continue
+            if (!text.contains("\"@type\"")) continue
             val obj = runCatching { JSONObject(text) }.getOrNull() ?: continue
-            if (obj.optString("@type").contains("Movie", ignoreCase = true)) return obj
+            val type = obj.optString("@type")
+            if (type.contains("Movie", true) || type.contains("TVSeries", true) ||
+                type.contains("TVEpisode", true) || type.contains("VideoObject", true) ||
+                type.contains("CreativeWork", true)
+            ) return obj
+        }
+        // A JSON-LD @graph wrapper (captured Website block) - search its nodes.
+        for (script in doc.select("script[type=application/ld+json]")) {
+            val text = script.data().trim()
+            val obj = runCatching { JSONObject(text) }.getOrNull() ?: continue
+            val graph = obj.optJSONArray("@graph") ?: continue
+            for (i in 0 until graph.length()) {
+                val node = graph.optJSONObject(i) ?: continue
+                val type = node.optString("@type")
+                if (type.contains("Movie", true) || type.contains("TVSeries", true) ||
+                    type.contains("TVEpisode", true) || type.contains("VideoObject", true)
+                ) return node
+            }
         }
         return null
     }
 
     private fun parseMetaMap(doc: Document): Map<String, String> {
-        val content = doc.selectFirst("#movie-detail .content") ?: return emptyMap()
         val map = LinkedHashMap<String, String>()
-        for (row in content.children()) {
-            if (row.tagName() != "div") continue
-            val label = row.selectFirst("h2")?.text()?.trim() ?: continue
-            val values = row.select("h3").map { it.text().trim() }.filter { it.isNotBlank() }
-            if (label.isNotBlank() && values.isNotEmpty()) {
-                map[label] = values.joinToString(", ")
+        // Captured theme: .detail p / .meta-info p with a <span> label.
+        for (p in doc.select(".detail p, .meta-info p")) {
+            if (p.closest(".synopsis, .trailer-series") != null) continue
+            val span = p.selectFirst("span") ?: continue
+            val label = span.text().trim().trimEnd(':').trim()
+            if (label.isBlank()) continue
+            val clone = p.clone()
+            clone.select("span").remove()
+            val value = clone.text().trim()
+            if (value.isNotBlank() && !map.containsKey(label)) map[label] = value
+        }
+        // Classic theme: #movie-detail .content > div with h2 label + h3 values.
+        val content = doc.selectFirst("#movie-detail .content")
+        if (content != null) {
+            for (row in content.children()) {
+                if (row.tagName() != "div") continue
+                val label = row.selectFirst("h2")?.text()?.trim() ?: continue
+                val values = row.select("h3").map { it.text().trim() }.filter { it.isNotBlank() }
+                if (label.isNotBlank() && values.isNotEmpty() && !map.containsKey(label)) {
+                    map[label] = values.joinToString(", ")
+                }
             }
         }
         return map
     }
 
     private fun parseSynopsis(doc: Document, title: String): String {
+        val synopsis = doc.selectFirst(".synopsis, .meta-info .synopsis")
+        if (synopsis != null) {
+            val full = synopsis.attr("data-full")
+            if (full.length > 20) return full.replace(Regex("\\s+"), " ").trim()
+            val clone = synopsis.clone()
+            clone.select("a, button, script, style").remove()
+            return clone.text().replace(Regex("\\s+"), " ").trim()
+        }
         val blockquote = doc.selectFirst("#movie-detail blockquote") ?: return ""
         val clone = blockquote.clone()
         clone.select("strong, .hidden, script, style").remove()
@@ -357,6 +560,35 @@ class Lk21Parser {
 
     private fun parseSources(doc: Document, baseUrl: String): List<StreamSource> {
         val out = LinkedHashMap<String, StreamSource>()
+        // Captured theme: #player-list li a[data-url][data-server] + #main-player.
+        for (anchor in doc.select("#player-list li a[data-url], #player-select option[value]")) {
+            val raw = anchor.attr("data-url").ifBlank {
+                anchor.attr("value")
+            }
+            if (raw.isBlank() || raw == "#" || raw.startsWith("javascript")) continue
+            val anchorEl = if (anchor.tagName() == "option") null else anchor
+            val embed = normalizeUrl(raw, baseUrl) ?: continue
+            val decoded = decodeEmbeddedUrl(embed)
+            val server = anchor.attr("data-server").trim()
+                .ifBlank { anchorEl?.text()?.trim().orEmpty() }
+                .uppercase()
+            val provider = server.ifBlank { "Provider" }
+            val qualities = anchorEl?.parents()?.firstOrNull { it.tagName() == "li" }
+                ?.select(".label, .quality")?.map { it.text().trim() }
+                ?.filter { it.matches(Regex("""\d{3,4}""")) }?.distinct()?.sortedByDescending { it.toIntOrNull() ?: 0 }
+                ?: emptyList()
+            val key = "$provider|$embed"
+            if (out.containsKey(key)) continue
+            out[key] = StreamSource(
+                provider = provider,
+                label = provider,
+                embedUrl = embed,
+                decodedUrl = decoded,
+                maxQuality = qualities.firstOrNull(),
+                qualities = qualities,
+            )
+        }
+        // Classic theme: #loadProviders li a[target=iframe].
         for (anchor in doc.select("#loadProviders li a, #loadProviders a[target=iframe]")) {
             val rawHref = anchor.attr("href")
             if (rawHref.isBlank() || rawHref.startsWith("javascript")) continue
@@ -382,6 +614,26 @@ class Lk21Parser {
             )
         }
         return out.values.toList()
+    }
+
+    /** True if the image is the detail-page hero poster (not a related card). */
+    private fun isPosterImage(el: Element, title: String): Boolean {
+        val alt = el.attr("alt").trim()
+        if (alt.isNotBlank()) {
+            if (alt.equals(title, ignoreCase = true) || alt.contains(title.substringBefore('('), true)) return true
+            return false
+        }
+        val titleAttr = el.attr("title").trim()
+        return titleAttr.isBlank() || titleAttr.equals(title, true)
+    }
+
+    private fun parseClockDuration(text: String?): Long? {
+        if (text.isNullOrBlank()) return null
+        val m = Regex("""^(\d{1,2}):(\d{2})$""").find(text.trim()) ?: return null
+        val h = m.groupValues[1].toLongOrNull() ?: 0
+        val min = m.groupValues[2].toLongOrNull() ?: 0
+        val total = (h * 60 + min) * 60_000L
+        return total.takeIf { it > 0 }
     }
 
     /** `/iframe.php?url=<encoded>` wrappers are used by the site's own player. */
