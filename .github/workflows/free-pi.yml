@@ -19,7 +19,7 @@ on:
   # the prompt, so editing prompt.md is how you drive the agent.
   push:
     paths:
-      - prompt.md
+     # - prompt.md
   workflow_dispatch:
     inputs:
       prompt:
