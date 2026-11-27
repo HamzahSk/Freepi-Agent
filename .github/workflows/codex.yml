@@ -1,8 +1,22 @@
-
 name: Codex DB Fixer
 
 on:
   workflow_dispatch:
+    inputs:
+      abi:
+        description: "Target ABI for APK build"
+        required: false
+        default: "arm64-v8a"
+        type: choice
+        options:
+          - arm64-v8a
+          - armeabi-v7a
+          - x86_64
+      build_apk:
+        description: "Build release APK after Codex run"
+        required: false
+        default: true
+        type: boolean
   push:
     paths:
       - "prompt.md"
@@ -38,27 +52,8 @@ jobs:
           echo "CODEX_HOME=$RUNNER_TEMP/codex-home" >> "$GITHUB_ENV"
           echo "CODEX_RECOVERY_DIR=$RUNNER_TEMP/codex-recovery" >> "$GITHUB_ENV"
 
-      # Main repository
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # Secondary repository
-      - name: Checkout rolang-server
-        uses: actions/checkout@v4
-        with:
-          repository: HamzahSk/rolang-server
-          token: ${{ secrets.ROLANG_SERVER_TOKEN }}
-          ref: main
-          path: rolang-server
-          fetch-depth: 0
-          persist-credentials: true
-
-      # Prevent the nested repository from being included
-      # in the main repository's Git operations.
-      - name: Exclude secondary repository
-        shell: bash
-        run: |
-          echo "/rolang-server/" >> .git/info/exclude
 
       - name: Restore Codex session cache
         uses: actions/cache/restore@v4
@@ -158,36 +153,10 @@ jobs:
       - name: Run Codex with session recovery
         shell: bash
         run: |
-          echo "Available repositories:"
+          echo "Available repository:"
           echo "Main: $GITHUB_WORKSPACE"
-          echo "Backend: $GITHUB_WORKSPACE/rolang-server"
 
           bash .github/scripts/run-codex-with-recovery.sh prompt.md
-
-      # Commit backend changes independently.
-      - name: Commit and push rolang-server changes
-        if: always()
-        shell: bash
-        env:
-          GH_PAT: ${{ secrets.ROLANG_SERVER_TOKEN }}
-        run: |
-          set -Eeuo pipefail
-
-          cd rolang-server
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add -A
-
-          if git diff --cached --quiet; then
-            echo "No backend changes to commit."
-            exit 0
-          fi
-
-          git commit -m "chore: update rolang-server via Codex"
-
-          git push origin HEAD:main
 
       - name: Collect changed files and recovery diagnostics
         if: always()
@@ -246,7 +215,7 @@ jobs:
           path: codex_diagnostics/
           if-no-files-found: warn
           retention-days: 7
-          
+
   build-apk:
     name: Build APK (${{ inputs.abi || 'arm64-v8a' }})
     needs: codex-run
