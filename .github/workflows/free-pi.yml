@@ -92,7 +92,7 @@ jobs:
   free-pi:
     name: free-pi ${{ inputs.model || 'particle' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4

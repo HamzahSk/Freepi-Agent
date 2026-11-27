@@ -86,7 +86,41 @@ data class MovieDetail(
     val related: List<MovieCard>,
     /** Series pages may redirect to the actual episode/show host. */
     val redirectUrl: String? = null,
+    /** Captured-theme series metadata (seasons/episodes/series links). */
+    val series: SeriesInfo? = null,
+    /** Site-internal post id (used for watch-history and subscriptions). */
+    val postId: String? = null,
 )
+
+/** One episode entry, as emitted by the `#season-data` JSON block. */
+data class SeriesEpisode(
+    val number: Int,
+    val title: String,
+    val slug: String,
+)
+
+/** One season (episodes in wave order). */
+data class SeriesSeason(
+    val number: Int,
+    val episodes: List<SeriesEpisode>,
+)
+
+/** Aggregated series metadata found on TVSeries hub pages and episode pages. */
+data class SeriesInfo(
+    val totalSeasons: Int = 0,
+    val totalEpisodes: Int = 0,
+    val currentSeason: Int? = null,
+    val currentEpisode: Int? = null,
+    val firstSlug: String? = null,
+    val latestSlug: String? = null,
+    val nextSlug: String? = null,
+    val prevSlug: String? = null,
+    val seriesSlug: String? = null,
+    val seriesTitle: String? = null,
+    val seasons: List<SeriesSeason> = emptyList(),
+) {
+    val episodes: List<SeriesEpisode> get() = seasons.flatMap { it.episodes }
+}
 
 /** A resolved, directly playable media URL. */
 data class ResolvedStream(

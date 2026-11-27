@@ -135,7 +135,7 @@
 
   var CARD_CONTAINERS = [
     'article', '.mega-item', '.widget-item', '.featured-item', '.search-item',
-    'li.slider', '.slider-item', '.ml-item', '.item', '.item-media'
+    'li.slider', '.slider-item', '.ml-item', '.item', '.item-media', 'li.ml-item'
   ].join(', ');
 
   function cardAnchor(el, a) {
@@ -146,9 +146,25 @@
     return true;
   }
 
+  /** Taxonomy links that are part of a single card (not navigation). */
+  function cardGenres(el) {
+    var genres = [];
+    var els = el.querySelectorAll('figcaption .genre, [itemprop="genre"], a[href*="/genre/"]');
+    for (var i = 0; i < els.length; i++) {
+      var value = els[i].getAttribute('content') || text(els[i]);
+      if (value && genres.indexOf(value) < 0) genres.push(value);
+    }
+    // The captured theme splits genres with commas inside one .genre node.
+    var flat = genres.join(',').split(',').map(function (s) { return s.trim(); })
+      .filter(function (s) { return s && s.length < 40; })
+      .filter(function (s, idx, arr) { return arr.indexOf(s) === idx; });
+    return flat.slice(0, 6);
+  }
+
+  /** Card in the captured `li.slider/article a[itemprop=url]` theme. */
   function cardFromContainer(el) {
     if (!el || el.nodeType !== 1) return null;
-    if (el.closest('.header, header, nav, .navbar, .widget-header, .breadcrumb, .sidebar, #pagination')) return null;
+    if (el.closest('.header, header, nav, .navbar, .widget-header, .breadcrumb, .sidebar, #pagination, .mobile-menu, .filter-overlay, .pop-movie-info')) return null;
     var a = el.querySelector('a[itemprop="url"]') || el.querySelector('a[rel="bookmark"]') || null;
     if (!a) {
       var links = el.querySelectorAll('a[href]');
@@ -156,6 +172,7 @@
         var l = links[i];
         var href = l.getAttribute('href') || '';
         if (/^javascript:/i.test(href)) continue;
+        if (l.closest('.pop-movie-info, .following, .breadcrumb, nav, .pagination')) continue;
         if (slugOf(abs(href))) { a = l; break; }
       }
     }
@@ -172,26 +189,20 @@
     }
     poster = abs(poster);
 
-    var title = text(el.querySelector('.poster-title, .grid-title, .entry-title, h1, h2, h3, .title')) ||
+    var title = text(el.querySelector('.poster-title, .grid-title, .entry-title, .video-info .video-title, h1, h2, h3, .title')) ||
       cleanTitle(a.getAttribute('title')) ||
       cleanTitle(img && img.getAttribute('alt')) ||
       cleanTitle(text(a));
     title = cleanTitle(title);
     if (!title) return null;
 
-    var year = text(el.querySelector('.year, .date, [itemprop="dateCreated"]')) ||
+    var year = text(el.querySelector('.year, .date, .video-year, [itemprop="datePublished"]')) ||
       (title.match(/\((\d{4})\)/) || [])[1] || null;
 
     var ratingEl = el.querySelector('.rating [itemprop="ratingValue"], [itemprop="ratingValue"], .rating, .score');
     var rating = num(ratingEl ? text(ratingEl) : null);
-    var quality = text(el.querySelector('.poster .label, .quality, .label-HD, .label-SD, .quality-badge')) || null;
-    var duration = text(el.querySelector('.duration, .runtime, .episode strong, .episode')) || null;
-
-    var genres = [];
-    el.querySelectorAll('meta[itemprop="genre"], a[href*="/genre/"]').forEach(function (g) {
-      var value = g.getAttribute('content') || text(g);
-      if (value && genres.indexOf(value) < 0) genres.push(value);
-    });
+    var quality = text(el.querySelector('.poster .label, .quality, .label-HD, .label-SD, .quality-badge, .poster .label-HD')) || null;
+    var duration = text(el.querySelector('.duration, .runtime, .episode strong, .episode, .video-duration')) || null;
 
     return {
       slug: slug,
@@ -201,7 +212,7 @@
       rating: rating,
       quality: quality,
       duration: duration,
-      genres: genres,
+      genres: cardGenres(el),
       year: year
     };
   }
@@ -347,6 +358,88 @@
     return out;
   }
 
+  /** Parses the `#season-data` JSON block (series hub + episode pages). */
+  function seasonData() {
+    var el = document.querySelector('#season-data');
+    if (!el) return null;
+    try {
+      var raw = JSON.parse(el.textContent || '');
+      return parseSeasons(raw);
+    } catch (e) { return null; }
+  }
+
+  function parseSeasons(raw) {
+    var seasons = [];
+    if (raw && typeof raw === 'object') {
+      Object.keys(raw).forEach(function (key) {
+        var list = raw[key];
+        if (!Array.isArray(list)) return;
+        var eps = [];
+        for (var i = 0; i < list.length; i++) {
+          var item = list[i] || {};
+          if (item.slug && (item.title || item.episode_no !== undefined)) {
+            eps.push({ number: parseInt(item.episode_no, 10) || i + 1, title: String(item.title || ''), slug: String(item.slug) });
+          }
+        }
+        if (eps.length) {
+          seasons.push({ number: parseInt(key, 10) || 0, episodes: eps });
+        }
+      });
+    }
+    seasons.sort(function (a, b) { return a.number - b.number; });
+    return seasons;
+  }
+
+  /** `#watch-history-data` JSON (id/title/rating/poster/slug/year/next/...). */
+  function watchHistory() {
+    var el = document.querySelector('#watch-history-data');
+    if (!el) return null;
+    try { return JSON.parse(el.textContent || ''); } catch (e) { return null; }
+  }
+
+  /** Taxonomy chips in `.tag-list` (type from href first segment). */
+  function tagList() {
+    var tags = [];
+    var els = document.querySelectorAll('.tag-list .tag a, .tag-list a, .tag a[href], [itemprop="genre"]');
+    for (var i = 0; i < els.length; i++) {
+      var a = els[i];
+      var href = a.getAttribute('href') || '';
+      var type = href.split('/').filter(Boolean)[0] || '';
+      var name = text(a);
+      if (name) tags.push({ type: type, name: name });
+    }
+    return tags;
+  }
+
+  /** Streaming providers from `#player-list` / `#player-select`. */
+  function playerSources(iframeBase) {
+    var out = [];
+    var seen = Object.create(null);
+
+    function add(raw, server) {
+      var u = abs(raw);
+      if (!u) return;
+      if (/youtube\.com|youtu\.be|recaptcha|googlevideo\.com|doubleclick|googleads|javascript:/i.test(u)) return;
+      if (seen[u]) return;
+      seen[u] = 1;
+      out.push({
+        provider: server, label: server, embedUrl: u, decodedUrl: u,
+        maxQuality: null, qualities: []
+      });
+    }
+
+    document.querySelectorAll('#player-list li a, #player-select option').forEach(function (a) {
+      var raw = a.getAttribute('data-url') || a.getAttribute('href') || a.getAttribute('value') || '';
+      if (!raw || raw === '#' || /^javascript:/i.test(raw)) return;
+      var server = a.getAttribute('data-server') || text(a) || 'Provider';
+      add(raw, server.toUpperCase());
+    });
+
+    // The already-active main player iframe is also a valid provider entry.
+    if (iframeBase) add(iframeBase, 'MAIN');
+    return out;
+  }
+
   window.__freepi = {
     REQUEST_ID: REQUEST_ID,
     send: send,
@@ -366,6 +459,10 @@
     collectFilters: collectFilters,
     paginationInfo: paginationInfo,
     pageFromUrl: pageFromUrl,
-    subtitlesFromHtml: subtitlesFromHtml
+    subtitlesFromHtml: subtitlesFromHtml,
+    seasonData: seasonData,
+    watchHistory: watchHistory,
+    tagList: tagList,
+    playerSources: playerSources
   };
 })();
