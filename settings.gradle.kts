@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FreepiStream"
+rootProject.name = "rofil.movie.app"
 include(":app")

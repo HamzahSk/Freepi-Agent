@@ -1,3 +1,3 @@
 # Keep model classes used by reflection/serialization
--keep class com.freepi.lk21.data.** { *; }
+-keep class rofil.movie.app.data.** { *; }
 -dontwarn org.jsoup.**

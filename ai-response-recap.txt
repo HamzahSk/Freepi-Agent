@@ -1,0 +1,14 @@
+Codex recovery result: success
+Attempts used: 1/5
+Resume turns: 0
+Session ID: 01a21d8d-7df0-7442-91aa-0424667199d8
+Last status: completed
+
+Final Codex response:
+The changes are ready in both worktrees on `main`; neither repository was pushed.
+
+In `movie-source`, the LK21 scripts are under `src/lk21/`, with P2P and Hydrax modules under `extractor/`. The root [manifest.json](/home/runner/work/_temp/movie-source/manifest.json:1) lists versions, capabilities, paths, and the raw GitHub base URL. The [README](/home/runner/work/_temp/movie-source/README.md:7) describes how to register another source or extractor. Captured responses and generated fixture output were excluded from the public source repository.
+
+The app now uses the `rofil.movie.app` namespace and application ID. Its [script loader](/home/runner/work/Freepi-Agent/Freepi-Agent/app/src/main/java/rofil/movie/app/data/scrape/ScrapeScriptLoader.kt:13) fetches the manifest and scripts from `https://raw.githubusercontent.com/HamzahSk/movie-source/main/`, caches valid files locally, and reports retryable errors when network and cache are unavailable. It also provides manifest-based extractor loading. Existing player diagnostics remain in place.
+
+Verification passed: `bash gradlew testDebugUnitTest`, `bash gradlew assembleDebug`, and `CHROMIUM_PATH=/usr/bin/chromium npm run verify` in `movie-source`. The JS checks covered the manifest, both extractors, and all four offline page fixtures. `gradlew` lacked its executable bit in this checkout, so it was run through `bash`.

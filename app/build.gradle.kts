@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.freepi.lk21"
+    namespace = "rofil.movie.app"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.freepi.lk21"
+        applicationId = "rofil.movie.app"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
