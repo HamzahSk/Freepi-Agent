@@ -97,6 +97,12 @@ class PlayerExtractionTest {
         assertEquals("video/mp4", PlayerMetadata.validatedMime(PlayerResponse("https://example/a.mp4", "\u0000\u0000\u0000\u0018ftypisom", "video/mp4")))
     }
 
+    @Test fun initializationAndDatasReferencesAreNotMediaUrls() {
+        assertNull(PlayerMetadata.mime("https://playcdn.de/init_player.js"))
+        assertNull(PlayerMetadata.mime("https://playcdn.de/player?datas=eyJmaWxlIjoibW92aWUubTN1OCJ9"))
+        assertNull(PlayerMetadata.validatedMime(PlayerResponse("https://playcdn.de/player", "<html>player init</html>", "text/html")))
+    }
+
     @Test fun subtitleMetadataAndPackedDataRemainStructured() {
         val data = PlayerMetadata.parse("""<video><source src="movie.webm"><track kind="subtitles" src="sub.vtt" label="English" srclang="en"></video>""", "https://example/dir/embed")
         assertEquals("https://example/dir/movie.webm", data.getJSONArray("media").getJSONObject(0).getString("url"))

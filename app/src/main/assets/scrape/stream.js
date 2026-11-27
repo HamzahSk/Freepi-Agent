@@ -19,7 +19,7 @@
   function register() {
     try { window.FreepiScrapeBridge.playerPage(window.__freepiRequestId, location.href); } catch (e) {}
   }
-  function activate(depth) { if (!active) { active = true; frameDepth = depth; register(); } }
+  function activate(depth) { if (!active) { active = true; frameDepth = depth; register(); state('PLAYER_HTML', document.readyState); } }
   window.addEventListener('message', function (event) {
     if (event.source !== window.parent || window === window.top) return;
     var v = event.data;

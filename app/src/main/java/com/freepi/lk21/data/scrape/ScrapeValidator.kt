@@ -5,6 +5,7 @@ import com.freepi.lk21.data.remote.NetworkUnavailableException
 import com.freepi.lk21.data.remote.ParseException
 import com.freepi.lk21.data.remote.ScrapeTimeoutException
 import com.freepi.lk21.data.remote.StreamResolutionException
+import com.freepi.lk21.data.remote.PlayerMetadata
 import com.freepi.lk21.data.remote.WebViewUnavailableException
 import org.json.JSONArray
 import org.json.JSONObject
@@ -126,12 +127,21 @@ object ScrapeValidator {
         val scripts = data.optJSONArray("scripts")
         validateSubtitles(data.optJSONArray("subtitles"))
 
-        val mediaCount = media?.let(::countValidUrls) ?: 0
+        val playableCandidates = media?.let { array ->
+            (0 until array.length()).count { index ->
+                val item = array.optJSONObject(index) ?: return@count false
+                val url = item.optString("url")
+                val type = item.optString("type").lowercase()
+                PlayerMetadata.absolute(url, item.optString("pageUrl").ifBlank { envelope.source.finalUrl }) != null &&
+                    (PlayerMetadata.mime(url) != null || type in setOf("hls", "dash", "mp4", "webm",
+                        "application/x-mpegurl", "application/vnd.apple.mpegurl", "application/dash+xml",
+                        "video/mp4", "video/webm"))
+            }
+        } ?: 0
         val frameCount = iframes?.let(::countAcceptableUrls) ?: 0
-        val scriptCount = scripts?.length() ?: 0
-        if (mediaCount == 0 && frameCount == 0 && scriptCount == 0) {
+        if (playableCandidates == 0 && frameCount == 0) {
             throw StreamResolutionException(
-                "PLAYER_METADATA: the provider page did not expose accessible media metadata."
+                "PLAYER_METADATA: the provider page exposed no playable media candidate or authorized player frame."
             )
         }
         return data

@@ -17,8 +17,8 @@ run-name: free-pi · ${{ inputs.model || 'particle' }} · ${{ github.event_name 
 on:
   # Auto-run whenever prompt.md changes on any branch. The file's contents become
   # the prompt, so editing prompt.md is how you drive the agent.
-  push:
-    paths:
+#  push:
+#    paths:
      # - prompt.md
   workflow_dispatch:
     inputs:

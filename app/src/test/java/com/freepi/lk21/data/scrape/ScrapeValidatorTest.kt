@@ -207,6 +207,29 @@ class ScrapeValidatorTest {
     }
 
     @Test
+    fun `stream rejects HTML and initialization documents as playable media`() {
+        val payload = okData(ScrapeSchemas.STREAM, JSONObject()
+            .put("media", org.json.JSONArray().put(JSONObject().put("url", "https://player.example/init_player.js"))
+                .put(JSONObject().put("url", "https://player.example/watch?datas=abc")))
+            .put("scripts", org.json.JSONArray().put("https://player.example/init_player.js")))
+        try {
+            ScrapeValidator.requireStream(envelope(payload, ScrapeKind.STREAM))
+            fail("expected StreamResolutionException")
+        } catch (e: StreamResolutionException) {
+            assertTrue(e.message!!.startsWith("PLAYER_METADATA:"))
+        }
+    }
+
+    @Test
+    fun `stream accepts extensionless typed manifest as an unvalidated candidate`() {
+        val payload = okData(ScrapeSchemas.STREAM, JSONObject()
+            .put("media", org.json.JSONArray().put(JSONObject()
+                .put("url", "https://cdn.example/manifest?signature=redacted")
+                .put("type", "application/vnd.apple.mpegurl"))))
+        assertNotNull(ScrapeValidator.requireStream(envelope(payload, ScrapeKind.STREAM)))
+    }
+
+    @Test
     fun `null payloads for optional arrays are accepted`() {
         val data = JSONObject()
             .put("title", "Gladiator II (2024)")

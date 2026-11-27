@@ -380,9 +380,18 @@ class WebViewScrapeEngine(
                         "API_RESPONSE", target, detail = "browser request method=${resource.method}")
                     val parent = resource.requestHeaders.entries
                         .firstOrNull { it.key.equals("Referer", true) }?.value
-                    if (PlayerMetadata.mime(target) != null && parent != null &&
-                        parent in trustedPlayerPages) {
-                        observedMedia[target] = parent
+                    val context = parent?.let { PlayerMetadata.absolute(it, request.url) }
+                        ?.takeIf { it in trustedPlayerPages }
+                        ?: playerUrl?.takeIf { it in trustedPlayerPages }
+                        ?: currentUrl?.let { PlayerMetadata.absolute(it, request.url) }
+                            ?.takeIf { it in trustedPlayerPages }
+                    val path = resource.url.path.orEmpty()
+                    val extension = path.substringAfterLast('/', "").substringAfterLast('.', "")
+                        .lowercase()
+                    val likelyMedia = PlayerMetadata.mime(target) != null || extension.isBlank()
+                    if (context != null && likelyMedia && !resource.isForMainFrame && resource.method == "GET") {
+                        // Treat requests only as candidates. The resolver validates the response body.
+                        observedMedia[target] = context
                         ScrapeLogger.stage(requestId, request.kind, "PLAYER_METADATA", target,
                             detail = "network candidate; validation pending")
                     }
@@ -557,7 +566,14 @@ class WebViewScrapeEngine(
                         }
                         val data = json.optJSONObject("data") ?: return@launch
                         val page = PlayerMetadata.absolute(data.optString("pageUrl"), session.request.url)
-                        if (page == null || page !in session.trustedPlayerPages) return@launch
+                        if (page != null) session.trustedPlayerPages.add(page)
+                        if (page == null) return@launch
+                        val media = data.optJSONArray("media") ?: org.json.JSONArray().also { data.put("media", it) }
+                        session.observedMedia.forEach { (url, parent) ->
+                            if ((0 until media.length()).none { media.optJSONObject(it)?.optString("url") == url }) {
+                                media.put(JSONObject().put("url", url).put("pageUrl", parent))
+                            }
+                        }
                         if (!session.delivered.compareAndSet(false, true)) return@launch
                         try {
                             if (session.onStreamMetadata.invoke(data)) session.deferred.complete(json)
