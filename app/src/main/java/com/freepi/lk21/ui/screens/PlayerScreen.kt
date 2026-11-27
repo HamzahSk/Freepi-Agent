@@ -69,6 +69,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.freepi.lk21.ui.components.PlayerLoading
 import com.freepi.lk21.ui.theme.Primary
 import com.freepi.lk21.ui.theme.TextSecondary
 import com.freepi.lk21.ui.util.findActivity
@@ -155,25 +156,20 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                 ) { viewModel.setControlsVisible(!state.controlsVisible) }
         )
 
-        if (state.resolving || state.buffering || state.loadingDetail) {
+        if (state.error == null && (state.resolving || state.buffering || state.loadingDetail)) {
             Box(
                 Modifier
                     .fillMaxSize()
                     .background(Color(0x66000000)),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = Primary)
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        when {
-                            state.loadingDetail -> "Loading title…"
-                            state.resolving -> "Resolving ${state.detail?.sources?.getOrNull(state.sourceIndex)?.provider ?: "source"}…"
-                            else -> "Buffering…"
-                        },
-                        color = Color.White,
-                    )
-                }
+                PlayerLoading(
+                    when {
+                        state.loadingDetail -> "Loading title and providers…"
+                        state.resolving -> "Initializing ${state.detail?.sources?.getOrNull(state.sourceIndex)?.provider ?: "source"} and validating media…"
+                        else -> "Buffering…"
+                    }
+                )
             }
         }
 
@@ -214,7 +210,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
         }
 
         AnimatedVisibility(
-            visible = state.controlsVisible,
+            visible = state.controlsVisible || state.loadingDetail || state.resolving || state.error != null,
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
@@ -259,8 +255,8 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                     }
                 }
 
-                // Center playback buttons.
-                Row(
+                // Transport controls appear only once playback is ready for interaction.
+                if (state.resolved != null && !state.resolving && !state.buffering && state.error == null) Row(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalArrangement = Arrangement.spacedBy(26.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -306,6 +302,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                             scrubbing = false
                         },
                         valueRange = 0f..duration.toFloat(),
+                        enabled = state.resolved != null && !state.resolving,
                         colors = SliderDefaults.colors(
                             thumbColor = Primary,
                             activeTrackColor = Primary,
@@ -326,18 +323,22 @@ fun PlayerScreen(viewModel: PlayerViewModel, onBack: () -> Unit) {
                         ControlIcon(
                             icon = Icons.Filled.Speed,
                             label = "${state.speed}x",
+                            enabled = state.resolved != null && !state.resolving,
                         ) { showSpeed = true }
                         ControlIcon(
                             icon = Icons.Filled.HighQuality,
-                            label = state.selectedQualityHeight?.let { "${it}p" } ?: "Auto",
+                            label = if (state.resolving || state.loadingDetail) "Quality…" else state.selectedQualityHeight?.let { "${it}p" } ?: "Auto",
+                            enabled = state.qualities.isNotEmpty() && !state.resolving,
                         ) { showQuality = true }
                         ControlIcon(
                             icon = Icons.Filled.Subtitles,
-                            label = if (state.selectedSubtitleId == null) "CC" else "CC on",
+                            label = if (state.resolving || state.loadingDetail) "Subtitles…" else if (state.selectedSubtitleId == null) "CC" else "CC on",
+                            enabled = state.subtitleOptions.isNotEmpty() && !state.resolving,
                         ) { showSubtitles = true }
                         ControlIcon(
                             icon = Icons.Filled.SwapHoriz,
                             label = "Source",
+                            enabled = !state.loadingDetail && !state.detail?.sources.isNullOrEmpty(),
                         ) { showSources = true }
                         IconButton(onClick = { landscape = !landscape }) {
                             Icon(
@@ -458,10 +459,11 @@ private fun LargeRoundButton(
 private fun ControlIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    TextButton(onClick = onClick) {
-        Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(18.dp))
+    TextButton(onClick = onClick, enabled = enabled) {
+        Icon(icon, contentDescription = label, tint = if (enabled) Color.White else TextSecondary, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(3.dp))
         Text(label, color = Color.White, fontSize = 10.sp)
     }

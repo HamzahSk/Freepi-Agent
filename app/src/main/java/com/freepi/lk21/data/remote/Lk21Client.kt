@@ -264,6 +264,8 @@ class Lk21Client(cacheDir: File,
         suspendCancellableCoroutine { continuation ->
             val call = client.newCall(request)
             val started = System.nanoTime()
+            val kind = if (request.header("Referer") != null) ScrapeKind.STREAM else ScrapeKind.LIST
+            ScrapeLogger.stage("http", kind, "request", request.url.toString(), detail = "method=${request.method}")
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
@@ -272,17 +274,30 @@ class Lk21Client(cacheDir: File,
                 override fun onResponse(call: Call, response: Response) {
                     try {
                         val result = response.use {
+                            var hop: Response? = it.priorResponse
+                            while (hop != null) {
+                                ScrapeLogger.stage("http", kind, "redirect", hop.request.url.toString(),
+                                    detail = "status=${hop.code} destination=${hop.header("Location")?.let { location -> hop?.request?.url?.resolve(location) }}")
+                                hop = hop.priorResponse
+                            }
+                            ScrapeLogger.stage("http", kind, "headers", it.request.url.toString(),
+                                detail = "method=${request.method} status=${it.code} contentType=${it.header("Content-Type").orEmpty().substringBefore(';')}")
                             if (it.code in listOf(401, 403, 429)) throw AccessBlockedException()
                             if (!it.isSuccessful) throw IOException("HTTP ${it.code}")
                             val type = it.header("Content-Type").orEmpty()
+                            var truncated = false
                             val body = if (limit != null) {
-                                String(it.peekBody(limit).bytes(), if (type.startsWith("video/", true) || type.startsWith("application/octet-stream", true))
+                                val bytes = it.peekBody(limit + 1).bytes()
+                                val contentRange = Regex("bytes (\\d+)-(\\d+)/(\\d+)").matchEntire(it.header("Content-Range").orEmpty())
+                                truncated = bytes.size > limit || (contentRange != null &&
+                                    contentRange.groupValues[2].toLong() + 1 < contentRange.groupValues[3].toLong())
+                                String(if (bytes.size > limit) bytes.copyOf(limit.toInt()) else bytes, if (type.startsWith("video/", true) || type.startsWith("application/octet-stream", true))
                                     Charsets.ISO_8859_1 else Charsets.UTF_8)
                             } else it.body?.string().orEmpty()
-                            ScrapeLogger.stage("http", ScrapeKind.LIST, "response", it.request.url.toString(),
+                            ScrapeLogger.stage("http", kind, "response", it.request.url.toString(),
                                 elapsedMs = (System.nanoTime() - started) / 1_000_000,
                                 detail = "requests=1 cacheHit=${it.cacheResponse != null} bytes=${body.length}")
-                            PlayerResponse(it.request.url.toString(), body, type)
+                            PlayerResponse(it.request.url.toString(), body, type, it.code, truncated)
                         }
                         if (continuation.isActive) continuation.resume(result)
                     } catch (e: Exception) {

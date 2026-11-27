@@ -131,7 +131,7 @@ object ScrapeValidator {
         val scriptCount = scripts?.length() ?: 0
         if (mediaCount == 0 && frameCount == 0 && scriptCount == 0) {
             throw StreamResolutionException(
-                "MEDIA_METADATA: the provider page did not expose accessible media metadata."
+                "PLAYER_METADATA: the provider page did not expose accessible media metadata."
             )
         }
         return data

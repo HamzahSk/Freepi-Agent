@@ -84,6 +84,8 @@ class PlayerViewModel(
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
     private var resolveJob: Job? = null
+    private var loadJob: Job? = null
+    private var progressJob: Job? = null
     private var resumePositionMs: Long = 0L
     private var resumeApplied = false
     private var textGroups: List<Tracks.Group> = emptyList()
@@ -139,8 +141,10 @@ class PlayerViewModel(
     }
 
     private fun load(index: Int) {
+        loadJob?.cancel()
+        progressJob?.cancel()
         _state.value = _state.value.copy(loadingDetail = true, error = null)
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             try {
                 var detail = repository.detail(slug)
                 // A series hub (TVSeries) page lists no direct player sources;
@@ -151,13 +155,26 @@ class PlayerViewModel(
                         detail = repository.detail("/$firstSlug")
                     }
                 }
-                val progress = repository.getProgress(detail.slug)
-                resumePositionMs = progress?.takeIf { !it.completed }?.positionMs ?: 0L
                 _state.value = _state.value.copy(
                     loadingDetail = false,
                     detail = detail,
                     durationMs = detail.durationMs ?: 0L,
                 )
+                // Resolve the essential source while Room independently loads optional resume metadata.
+                resumePositionMs = 0L
+                val loadedDetail = detail
+                progressJob = viewModelScope.launch {
+                    try {
+                        val progress = repository.getProgress(loadedDetail.slug)
+                        resumePositionMs = progress?.takeIf { !it.completed }?.positionMs ?: 0L
+                        // A slow DB must not block playback. Apply a late resume only at the beginning.
+                        val duration = player.duration
+                        if (resumeApplied && player.currentPosition < 2_000 && resumePositionMs > 10_000 &&
+                            duration > 0 && resumePositionMs < duration - 10_000) player.seekTo(resumePositionMs)
+                    } catch (t: Throwable) {
+                        if (t is kotlinx.coroutines.CancellationException) throw t
+                    }
+                }
                 if (detail.sources.isEmpty()) {
                     _state.value = _state.value.copy(
                         error = "No streaming providers were listed for this title.",
@@ -349,7 +366,10 @@ class PlayerViewModel(
         resolveAndPlay(index)
     }
 
-    fun retry() = resolveAndPlay(_state.value.sourceIndex)
+    fun retry() {
+        if (_state.value.detail == null) load(_state.value.sourceIndex)
+        else resolveAndPlay(_state.value.sourceIndex)
+    }
 
     fun selectQuality(height: Int?) {
         val builder = player.trackSelectionParameters.buildUpon()

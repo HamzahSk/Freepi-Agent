@@ -21,27 +21,35 @@ internal suspend fun resolvePlayerSources(
     source: StreamSource,
     pageUrl: String,
     options: PlayerExtractionOptions = PlayerExtractionOptions(),
-    browser: (suspend (String, String, String) -> org.json.JSONObject)? = null,
+    browser: BrowserExtraction? = null,
 ): ResolvedStream {
     var last: Exception? = null
     val requestId = java.util.UUID.randomUUID().toString()
     val started = System.nanoTime()
+    var browserAttempted = false
     // The documented wrapper carries host/id; a decoded URL can omit that context.
     for (start in listOf(source.embedUrl, source.decodedUrl).mapNotNull { PlayerMetadata.absolute(it, pageUrl) }.distinct()) {
         try {
             return PlayerExtraction(
                 get = { target, parent, media -> client.playerResponse(target, parent, media) },
                 post = { request, parent -> client.playerResponse(request.url, parent, popup = request) },
-                browser = browser,
+                browser = browser?.let { execute -> { initial, catalog, provider, validate ->
+                    browserAttempted = true
+                    execute(initial, catalog, provider, validate)
+                } },
                 options = options,
                 log = { stage, target, detail -> ScrapeLogger.stage(requestId, ScrapeKind.STREAM,
                     stage.name, target, elapsedMs = (System.nanoTime() - started) / 1_000_000, detail = detail) },
             ).resolve(start, pageUrl).copy(provider = source.provider, label = source.label)
         } catch (e: CancellationException) { throw e }
         catch (e: AccessBlockedException) { throw e }
-        catch (e: Exception) { last = e }
+        catch (e: Exception) {
+            last = e
+            // A second alias must not reload an already-observed frame tree.
+            if (browserAttempted) throw e
+        }
     }
-    throw last ?: StreamResolutionException("INITIAL_PAGE: missing player URL")
+    throw last ?: StreamResolutionException("INITIAL_REQUEST: missing player URL")
 }
 
 object JsUnpacker {

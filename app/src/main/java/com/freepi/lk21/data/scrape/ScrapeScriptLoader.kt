@@ -24,6 +24,8 @@ class ScrapeScriptLoader(private val context: Context) {
             append("window.__freepiRequestUrl=").append(JSONObject.quote(request.url)).append(";\n")
             append("window.__freepiProviderUrl=").append(JSONObject.quote(request.streamProviderUrl ?: request.url)).append(";\n")
             append("window.__freepiMaxDepth=").append(request.streamMaxDepth.coerceIn(0, 32)).append(";\n")
+            append("window.__freepiTimeoutMs=").append((request.timeoutMs - 1_000).coerceAtLeast(1)).append(";\n")
+            append("window.__freepiDeadline=").append(System.currentTimeMillis() + request.timeoutMs - 1_000).append(";\n")
             append(common).append('\n')
             append(page)
         }

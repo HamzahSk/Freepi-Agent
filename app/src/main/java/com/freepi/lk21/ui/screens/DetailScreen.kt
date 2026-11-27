@@ -58,7 +58,7 @@ import com.freepi.lk21.data.model.SeriesEpisode
 import com.freepi.lk21.ui.components.ChipLabel
 import com.freepi.lk21.ui.components.EmptyState
 import com.freepi.lk21.ui.components.ErrorState
-import com.freepi.lk21.ui.components.LoadingState
+import com.freepi.lk21.ui.components.DetailSkeleton
 import com.freepi.lk21.ui.components.MovieRowSection
 import com.freepi.lk21.ui.components.SectionHeader
 import com.freepi.lk21.ui.theme.Accent
@@ -82,7 +82,9 @@ fun DetailScreen(
     onRemoveHistory: () -> Unit,
 ) {
     when {
-        state.loading -> LoadingState("Loading details…")
+        state.loading -> DetailSkeleton {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
+        }
         state.error != null && state.detail == null -> ErrorState(state.error, onRetry)
         state.detail == null -> EmptyState("Movie details are unavailable.")
         else -> DetailContent(
@@ -91,6 +93,8 @@ fun DetailScreen(
             resumeMs = state.progress?.positionMs ?: 0L,
             resumeDurationMs = state.progress?.durationMs ?: 0L,
             completed = state.progress?.completed == true,
+            loadingProgress = state.loadingProgress,
+            progressError = state.progressError,
             onBack = onBack,
             onPlay = onPlay,
             onMovieClick = onMovieClick,
@@ -108,6 +112,8 @@ private fun DetailContent(
     resumeMs: Long,
     resumeDurationMs: Long,
     completed: Boolean,
+    loadingProgress: Boolean,
+    progressError: String?,
     onBack: () -> Unit,
     onPlay: (MovieDetail, Int) -> Unit,
     onMovieClick: (MovieCard) -> Unit,
@@ -282,6 +288,16 @@ private fun DetailContent(
                         Text("Remove", color = TextSecondary, fontSize = 11.sp)
                     }
                 }
+            }
+        }
+        if (loadingProgress || progressError != null) {
+            item {
+                Text(
+                    progressError ?: "Loading watch progress…",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                )
             }
         }
         if (detail.synopsis.isNotBlank()) {

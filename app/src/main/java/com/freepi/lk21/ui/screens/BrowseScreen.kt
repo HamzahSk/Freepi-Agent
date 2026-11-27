@@ -20,6 +20,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -36,7 +37,9 @@ import com.freepi.lk21.data.model.MovieCard
 import com.freepi.lk21.ui.components.ChipLabel
 import com.freepi.lk21.ui.components.EmptyState
 import com.freepi.lk21.ui.components.ErrorState
-import com.freepi.lk21.ui.components.LoadingState
+import com.freepi.lk21.ui.components.FilterSkeleton
+import com.freepi.lk21.ui.components.SkeletonPosterRow
+import com.freepi.lk21.ui.components.MovieGridSkeleton
 import com.freepi.lk21.ui.components.MovieGrid
 import com.freepi.lk21.ui.theme.Background
 import com.freepi.lk21.ui.theme.Primary
@@ -71,6 +74,8 @@ fun BrowseScreen(
     onRetry: () -> Unit,
 ) {
     var kind by rememberSaveable { mutableStateOf("genre") }
+    var query by rememberSaveable(state.path) { mutableStateOf("") }
+    val visibleItems = state.items.filter { query.isBlank() || it.title.contains(query.trim(), ignoreCase = true) }
     val options = when (kind) {
         "country" -> state.filters?.countries.orEmpty()
         "year" -> state.filters?.years.orEmpty()
@@ -100,6 +105,11 @@ fun BrowseScreen(
                 titleContentColor = MaterialTheme.colorScheme.onBackground,
             ),
         )
+        OutlinedTextField(
+            value = query, onValueChange = { query = it }, singleLine = true,
+            placeholder = { Text("Filter loaded titles") },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        )
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -126,6 +136,8 @@ fun BrowseScreen(
             }
         }
         Spacer(Modifier.height(8.dp))
+        if (state.filtersLoading) FilterSkeleton()
+        if (state.filtersError != null) Text(state.filtersError, color = TextSecondary, modifier = Modifier.padding(horizontal = 16.dp))
         if (options.isNotEmpty()) {
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
@@ -143,14 +155,19 @@ fun BrowseScreen(
         Spacer(Modifier.height(6.dp))
 
         when {
-            state.loading -> LoadingState("Loading ${state.title}…")
+            state.loading -> MovieGridSkeleton("Loading ${state.title}")
             state.error != null && state.items.isEmpty() -> ErrorState(state.error, onRetry)
             state.empty -> EmptyState("No titles found for this filter.")
+            visibleItems.isEmpty() && query.isNotBlank() -> Column {
+                Text("No loaded titles match this search.", color = TextSecondary, modifier = Modifier.padding(16.dp))
+                GridFooter(state.loadingMore, state.hasMore, onLoadMore)
+            }
             else -> MovieGrid(
-                movies = state.items,
+                movies = visibleItems,
                 onMovieClick = onMovieClick,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
                 footer = {
+                    state.error?.let { Text(it, color = TextSecondary, modifier = Modifier.padding(16.dp)) }
                     GridFooter(
                         loadingMore = state.loadingMore,
                         hasMore = state.hasMore,
@@ -171,15 +188,7 @@ fun GridFooter(loadingMore: Boolean, hasMore: Boolean, onLoadMore: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         when {
-            loadingMore -> Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = Primary,
-                )
-                Spacer(Modifier.width(10.dp))
-                Text("Loading more…", color = TextSecondary)
-            }
+            loadingMore -> SkeletonPosterRow()
             hasMore -> TextButton(onClick = onLoadMore) {
                 Text("Load more", color = Primary)
             }

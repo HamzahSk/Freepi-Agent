@@ -12,14 +12,24 @@ import org.jsoup.Jsoup
 import java.net.URI
 
 enum class PlayerStage {
-    INITIAL_PAGE, API_RESPONSE, EMBED_URL, PROVIDER_PAGE, PLAYER_CONFIG, MEDIA_METADATA, VALIDATION
+    INITIAL_REQUEST, API_RESPONSE, EMBED_URL, PLAYER_HTML, DEPENDENCY_LOADING, PLAYER_INITIALIZATION, PLAYER_METADATA, STREAM_VALIDATION
 }
 
-data class PlayerResponse(val url: String, val body: String, val contentType: String = "")
+data class PlayerResponse(
+    val url: String,
+    val body: String,
+    val contentType: String = "",
+    val status: Int = 200,
+    val truncated: Boolean = false,
+)
 data class PopupRequest(val url: String, val host: String, val id: String)
+
+/** The browser stays alive while each candidate is checked by native HTTP. */
+typealias BrowserExtraction = suspend (String, String, String, suspend (JSONObject) -> Boolean) -> JSONObject
 
 /** Pure parsing shared by HTTP, browser bridge and fixture tests. No DOM execution in Rhino. */
 object PlayerMetadata {
+    private const val INTERACTION_ELEMENTS = "#overlay, #uyeouyeo.visible, .custom-play-btn"
     fun absolute(raw: String, base: String): String? = raw.takeIf { it.isNotBlank() }?.let { runCatching {
         URI(base).resolve(raw.replace("\\/", "/").trim()).normalize().let {
             URI(it.toString().substringBefore("#"))
@@ -43,6 +53,7 @@ object PlayerMetadata {
 
     fun popup(html: String, pageUrl: String): PopupRequest? {
         val doc = Jsoup.parse(html)
+        if (doc.selectFirst(INTERACTION_ELEMENTS) != null) return null
         if (doc.selectFirst("iframe#video-iframe") == null) return null
         for (script in doc.select("script:not([src])")) {
             val text = script.data()
@@ -94,7 +105,9 @@ object PlayerMetadata {
             absolute(it.attr("src").ifBlank { it.attr("data") }, base)?.let(frames::put)
         }
         val scripts = doc.select("script:not([src])").map { it.data() }
-        val expanded = scripts + scripts.flatMap { JsUnpacker.unpackAll(it) + JsExtractor.decodeAtob(it) }
+        // SoTrym's datas is opaque initialization data, not a URL or executable manifest.
+        val expanded = scripts.filterNot { it.contains("SoTrym") && it.contains("datas") }
+            .let { plain -> plain + plain.flatMap { JsUnpacker.unpackAll(it) + JsExtractor.decodeAtob(it) } }
         for (script in expanded) {
             Regex("""(?:["']?(?:fileUrl|file|src|source|url)["']?)\s*[:=]\s*["']([^"']+)["']""")
                 .findAll(script.replace("\\/", "/")).forEach { media(it.groupValues[1]) }
@@ -123,6 +136,7 @@ object PlayerMetadata {
             }
         }
         return JSONObject().put("media", media).put("subtitles", tracks).put("iframes", frames)
+            .put("interactionRequired", doc.selectFirst(INTERACTION_ELEMENTS) != null)
     }
 
     fun json(raw: String): Any? = runCatching { org.json.JSONTokener(raw).nextValue() }.getOrNull()
@@ -210,14 +224,15 @@ object PlayerMetadata {
     }
 
     fun validatedMime(response: PlayerResponse): String? {
+        if (response.status !in 200..299) return null
         val path = runCatching { URI(response.url).path }.getOrDefault("")
         if (Regex("""\.(?:ts|m4s|aac|m4a)$""", RegexOption.IGNORE_CASE).containsMatchIn(path)) return null
         val body = response.body.trimStart('\uFEFF', ' ', '\n', '\r', '\t')
         val type = response.contentType.substringBefore(';').lowercase()
-        if (body.lineSequence().firstOrNull() == "#EXTM3U" &&
+        if (!response.truncated && body.lineSequence().firstOrNull() == "#EXTM3U" &&
             Regex("(?m)^#EXT(?:INF:|-X-STREAM-INF:)").containsMatchIn(body) &&
             body.lineSequence().any { it.isNotBlank() && !it.startsWith("#") }) return "application/x-mpegURL"
-        if (body.startsWith("<")) {
+        if (!response.truncated && body.startsWith("<")) {
             val doc = Jsoup.parse(body, response.url, org.jsoup.parser.Parser.xmlParser())
             if (doc.children().singleOrNull()?.tagName()?.substringAfterLast(':') == "MPD" &&
                 doc.allElements.any { it.tagName().substringAfterLast(':') == "Representation" &&
@@ -240,23 +255,31 @@ data class PlayerExtractionOptions(
     val maxInitializationResources: Int = 4,
     val layerTimeoutMs: Long = 15_000,
     val browserTimeoutMs: Long = 30_000,
+    val totalTimeoutMs: Long = 90_000,
 ) {
     init { require(maxDepth in 0..32 && maxPages > 0 && maxInitializationResources >= 0 &&
-        layerTimeoutMs > 0 && browserTimeoutMs > 0) }
+        layerTimeoutMs > 0 && browserTimeoutMs > 0 && totalTimeoutMs > 0) }
 }
 
 /** HTTP traversal first, then one browser observation of the original real frame ancestry. */
 class PlayerExtraction(
     private val get: suspend (String, String, Boolean) -> PlayerResponse,
     private val post: suspend (PopupRequest, String) -> PlayerResponse,
-    private val browser: (suspend (String, String, String) -> JSONObject)? = null,
+    private val browser: BrowserExtraction? = null,
     private val log: (PlayerStage, String, String) -> Unit = { _, _, _ -> },
     private val options: PlayerExtractionOptions = PlayerExtractionOptions(),
 ) {
-    suspend fun resolve(initial: String, catalog: String): ResolvedStream = withContext(Dispatchers.Default) {
+    suspend fun resolve(initial: String, catalog: String): ResolvedStream {
+        var activeStage = PlayerStage.INITIAL_REQUEST
+        return withTimeoutOrNull(options.totalTimeoutMs) {
+            resolveWithinDeadline(initial, catalog) { activeStage = it }
+        } ?: throw StreamResolutionException("$activeStage: total extraction deadline exceeded")
+    }
+
+    private suspend fun resolveWithinDeadline(initial: String, catalog: String, onStage: (PlayerStage) -> Unit): ResolvedStream = withContext(Dispatchers.Default) {
         val visited = HashSet<String>()
         val validated = HashSet<Pair<String, String>>()
-        val responses = HashMap<Triple<String, String, Boolean>, PlayerResponse>()
+        val responses = HashMap<Pair<String, String>, PlayerResponse>()
         val subtitles = LinkedHashMap<String, SubtitleTrack>()
         var success = false
         var requests = 0
@@ -269,32 +292,44 @@ class PlayerExtraction(
         suspend fun <T> timed(stage: PlayerStage, url: String, timeout: Long = options.layerTimeoutMs,
             block: suspend () -> T): T {
             val before = System.nanoTime()
+            onStage(stage)
             try {
                 return (withTimeoutOrNull(timeout) { block() to true }
                     ?: throw StreamResolutionException("$stage: layer timeout")).first
             } catch (e: CancellationException) { throw e }
             catch (e: AccessBlockedException) { throw e }
             catch (e: Exception) {
-                if (e is StreamResolutionException) throw e
+                if (e is SourceException) throw e
                 throw StreamResolutionException("$stage: operation failed", e)
             } finally { log(stage, url, "durationMs=${elapsed(before)} requests=$requests cacheHits=$hits cacheMisses=$requests depth=$deepest") }
         }
         suspend fun fetch(url: String, parent: String, media: Boolean, stage: PlayerStage): PlayerResponse {
-            val key = Triple(url, parent, media)
+            val key = url to parent
             responses[key]?.let { hits++; return it }
             requests++
-            return timed(stage, url) { get(url, parent, media) }.also { responses[key] = it }
+            return timed(stage, url) { get(url, parent, media) }.also {
+                responses[key] = it
+                if (it.url != url) responses[it.url to parent] = it
+                log(stage, it.url, "method=GET status=${it.status} contentType=${it.contentType.substringBefore(';')} redirected=${it.url != url}")
+            }
         }
         suspend fun validate(url: String, parent: String): ResolvedStream? {
             if (!validated.add(url to parent)) return null
-            log(PlayerStage.MEDIA_METADATA, url, "candidate; validation pending")
-            val response = fetch(url, parent, true, PlayerStage.VALIDATION)
-            val mime = PlayerMetadata.validatedMime(response) ?: return null
+            log(PlayerStage.PLAYER_METADATA, url, "candidate; validation pending")
+            val response = fetch(url, parent, true, PlayerStage.STREAM_VALIDATION)
+            val mime = PlayerMetadata.validatedMime(response) ?: run {
+                log(PlayerStage.STREAM_VALIDATION, response.url, "rejected reason=not_media_document")
+                return null
+            }
+            if ((mime == "application/dash+xml" && response.body.contains("ContentProtection", true)) ||
+                (mime == "application/x-mpegURL" && Regex("METHOD=SAMPLE-AES", RegexOption.IGNORE_CASE).containsMatchIn(response.body))) {
+                throw StreamResolutionException("STREAM_VALIDATION: protected media requires an authorized DRM playback integration")
+            }
             if (mime == "application/x-mpegURL") PlayerMetadata.hlsSubtitles(response.body, response.url)
                 .forEach { subtitles[it.url] = it }
             if (mime == "application/dash+xml") PlayerMetadata.dashSubtitles(response.body, response.url)
                 .forEach { subtitles[it.url] = it }
-            log(PlayerStage.VALIDATION, response.url, "success mime=$mime subtitles=${subtitles.size}")
+            log(PlayerStage.STREAM_VALIDATION, response.url, "success mime=$mime subtitles=${subtitles.size}")
             val origin = URI(parent).let { "${it.scheme}://${it.authority}" }
             return ResolvedStream("", response.url, mime, mapOf("Referer" to parent, "Origin" to origin,
                 "User-Agent" to Lk21Client.USER_AGENT), subtitles.values.toList(), "")
@@ -310,19 +345,20 @@ class PlayerExtraction(
                     validate(url, PlayerMetadata.absolute(item.optString("pageUrl"), base) ?: base)?.let { return it }
                 } catch (e: CancellationException) { throw e }
                 catch (e: AccessBlockedException) { throw e }
-                catch (e: Exception) { last = e; log(PlayerStage.VALIDATION, url, "candidate failed ${e.javaClass.simpleName}") }
+                catch (e: Exception) { last = e; log(PlayerStage.STREAM_VALIDATION, url, "candidate failed ${e.javaClass.simpleName}") }
             }
             return null
         }
         suspend fun visit(url: String, parent: String, depth: Int): ResolvedStream? {
             if (depth > options.maxDepth || visited.size >= options.maxPages || !visited.add(url)) return null
             deepest = maxOf(deepest, depth)
-            val stage = if (depth == 0) PlayerStage.INITIAL_PAGE else PlayerStage.PROVIDER_PAGE
+            val stage = if (depth == 0) PlayerStage.INITIAL_REQUEST else PlayerStage.PLAYER_HTML
             try {
-                if (PlayerMetadata.mime(url) != null) return validate(url, parent)
-                val response = fetch(url, parent, false, stage)
+                val response = fetch(url, parent, PlayerMetadata.mime(url) != null, stage)
+                if (PlayerMetadata.validatedMime(response) != null) return validate(url, parent)
                 if (response.url != url && !visited.add(response.url)) return null
                 if (depth > 0) provider = response.url
+                log(PlayerStage.PLAYER_HTML, response.url, "document received; media=false")
                 val popup = PlayerMetadata.popup(response.body, response.url)
                 if (popup != null) {
                     requests++
@@ -335,14 +371,20 @@ class PlayerExtraction(
                 val json = PlayerMetadata.json(response.body)
                 val data = if (json != null) PlayerMetadata.configuration(json, response.url)
                     else PlayerMetadata.parse(response.body, response.url)
-                log(PlayerStage.PLAYER_CONFIG, response.url, "parseMs=${elapsed(parsed)} depth=$depth")
+                log(PlayerStage.PLAYER_INITIALIZATION, response.url, "parseMs=${elapsed(parsed)} depth=$depth")
+                if (data.optBoolean("interactionRequired")) {
+                    last = StreamResolutionException("PLAYER_INITIALIZATION: provider requires user interaction or advertising flow")
+                    return null // A child frame must not circumvent its parent's interaction requirements.
+                }
                 candidates(data, response.url)?.let { return it }
                 val frames = data.optJSONArray("iframes") ?: JSONArray()
                 for (i in 0 until frames.length()) visit(frames.getString(i), response.url, depth + 1)?.let { return it }
                 for (resource in PlayerMetadata.initializationResources(response.body, response.url)
+                    // Browser entrypoint programs need Chromium, not a second native download.
+                    .filter { browser == null || URI(it).path.endsWith(".json", true) }
                     .take(options.maxInitializationResources)) {
                     try {
-                        val config = fetch(resource, response.url, false, PlayerStage.PLAYER_CONFIG)
+                        val config = fetch(resource, response.url, false, PlayerStage.DEPENDENCY_LOADING)
                         val parsedConfig = PlayerMetadata.json(config.body)
                         val metadata = if (parsedConfig != null) PlayerMetadata.configuration(parsedConfig, config.url)
                             else PlayerMetadata.parse("<script>${config.body}</script>", response.url)
@@ -362,25 +404,29 @@ class PlayerExtraction(
             return null
         }
         try {
-            visit(PlayerMetadata.absolute(initial, catalog) ?: throw StreamResolutionException("INITIAL_PAGE: invalid URL"), catalog, 0)?.let { return@withContext it.also { success = true } }
+            visit(PlayerMetadata.absolute(initial, catalog) ?: throw StreamResolutionException("INITIAL_REQUEST: invalid URL"), catalog, 0)?.let { return@withContext it.also { success = true } }
             if (browser != null) {
-                val runtime = timed(PlayerStage.PLAYER_CONFIG, provider, options.browserTimeoutMs) {
-                    browser.invoke(initial, catalog, provider)
+                var accepted: ResolvedStream? = null
+                val runtime = timed(PlayerStage.PLAYER_INITIALIZATION, provider, options.browserTimeoutMs) {
+                    browser.invoke(initial, catalog, provider) { metadata ->
+                        val base = PlayerMetadata.absolute(metadata.optString("pageUrl"), provider) ?: provider
+                        if (metadata.optInt("depth", 0) > options.maxDepth) false
+                        else {
+                            accepted = candidates(metadata, base)
+                            accepted != null
+                        }
+                    }
                 }
+                accepted?.let { return@withContext it.also { success = true } }
                 val runtimeDepth = runtime.optInt("depth", 0)
-                if (runtimeDepth > options.maxDepth) throw StreamResolutionException("PLAYER_CONFIG: browser depth limit")
+                if (runtimeDepth > options.maxDepth) throw StreamResolutionException("PLAYER_INITIALIZATION: browser depth limit")
                 deepest = maxOf(deepest, runtimeDepth)
                 val base = PlayerMetadata.absolute(runtime.optString("pageUrl"), provider) ?: provider
                 candidates(runtime, base)?.let { return@withContext it.also { success = true } }
-                val scripts = runtime.optJSONArray("scripts") ?: JSONArray()
-                val scriptHtml = (0 until scripts.length()).joinToString("\n") { "<script>${scripts.optString(it)}</script>" }
-                candidates(PlayerMetadata.parse(scriptHtml, base), base)?.let { return@withContext it.also { success = true } }
-                val frames = runtime.optJSONArray("iframes") ?: JSONArray()
-                for (i in 0 until frames.length()) visit(frames.getString(i), base, runtimeDepth + 1)?.let { return@withContext it.also { success = true } }
             }
-            throw last ?: StreamResolutionException("MEDIA_METADATA: no validated accessible media; depth/page limits, interaction or access restrictions may apply")
+            throw last ?: StreamResolutionException("PLAYER_METADATA: no authorized playable source exposed by the player; browser interaction, provider restrictions or unavailable metadata may prevent native playback")
         } finally {
-            log(PlayerStage.VALIDATION, initial, "complete success=$success durationMs=${elapsed(started)} requests=$requests cacheHits=$hits depth=$deepest validatedCandidates=${validated.size}")
+            log(PlayerStage.STREAM_VALIDATION, initial, "complete success=$success durationMs=${elapsed(started)} requests=$requests cacheHits=$hits depth=$deepest validatedCandidates=${validated.size}")
         }
     }
 }

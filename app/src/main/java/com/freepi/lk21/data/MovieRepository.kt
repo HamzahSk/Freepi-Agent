@@ -49,6 +49,7 @@ class MovieRepository(
     private val homeFlight = SingleFlight<Boolean, HomeData>()
     private val listFlight = SingleFlight<Pair<String, Boolean>, ListPage>()
     private val detailFlight = SingleFlight<Pair<String, Boolean>, MovieDetail>()
+    private val streamFlight = SingleFlight<Pair<String, StreamSource>, ResolvedStream>()
 
     private val progressDao = database.watchProgressDao()
     private val favoriteDao = database.favoriteDao()
@@ -84,7 +85,7 @@ class MovieRepository(
     }
 
     suspend fun detail(slugOrUrl: String, forceRefresh: Boolean = false): MovieDetail {
-        val url = if (slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/$slugOrUrl/")
+        val url = if (slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/${slugOrUrl.trim('/')}/")
         if (!forceRefresh) detailCache.get(url)?.let { cacheHit(ScrapeKind.DETAIL); return it }
         return detailFlight.run(url to forceRefresh) {
             if (!forceRefresh) detailCache.get(url)?.let { return@run it }
@@ -93,8 +94,10 @@ class MovieRepository(
     }
 
     suspend fun resolve(detail: MovieDetail, source: StreamSource): ResolvedStream =
-        streamProvider.resolve(detail, source)
-            .copy(provider = source.provider, label = source.label)
+        streamFlight.run(detail.url to source) {
+            streamProvider.resolve(detail, source)
+                .copy(provider = source.provider, label = source.label)
+        }
 
     private fun cacheHit(kind: ScrapeKind) = ScrapeLogger.stage("catalog", kind, "cache", detail = "model hit")
 

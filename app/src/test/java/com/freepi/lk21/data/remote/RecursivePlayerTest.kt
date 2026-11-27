@@ -14,7 +14,7 @@ class RecursivePlayerTest {
     }
     private fun resolver(pages: Map<String, String>, requests: MutableList<String> = mutableListOf(),
         options: PlayerExtractionOptions = PlayerExtractionOptions(),
-        browser: (suspend (String, String, String) -> JSONObject)? = null) = PlayerExtraction(
+        browser: BrowserExtraction? = null) = PlayerExtraction(
         get = { url, _, _ -> requests.add(url); PlayerResponse(url, pages[url] ?: error("Unavailable")) },
         post = { _, _ -> error("Unexpected POST") }, options = options, browser = browser)
 
@@ -85,7 +85,7 @@ class RecursivePlayerTest {
         val metadata = PlayerMetadata.configuration(JSONObject("""{"status":"success","fileUrl":"https://media.test/master.m3u8","title":"Fixture"}"""), base)
         val result = resolver(mapOf(base to "<div id=vstr></div>",
             "https://media.test/master.m3u8" to "#EXTM3U\n#EXTINF:10,\nsegment.ts"),
-            browser = { _, _, _ -> metadata.put("pageUrl", base) }).resolve(base, base)
+            browser = { _, _, _, _ -> metadata.put("pageUrl", base) }).resolve(base, base)
         assertEquals("https://media.test/master.m3u8", result.url)
     }
 
@@ -104,7 +104,7 @@ class RecursivePlayerTest {
     @Test fun browserRunsOnceForWholeFrameTreeAndCallerCancellationPropagates() = runBlocking {
         var calls = 0
         val pages = mapOf(base to "<iframe allowfullscreen src='/empty'></iframe>", "https://player.test/empty" to "<div/>")
-        runCatching { resolver(pages, browser = { _, _, _ -> calls++; JSONObject() }).resolve(base, base) }
+        runCatching { resolver(pages, browser = { _, _, _, _ -> calls++; JSONObject() }).resolve(base, base) }
         assertEquals(1, calls)
         val extraction = PlayerExtraction(get = { _, _, _ -> delay(10000); error("no") }, post = { _, _ -> error("no") })
         val job = async { extraction.resolve(base, base) }

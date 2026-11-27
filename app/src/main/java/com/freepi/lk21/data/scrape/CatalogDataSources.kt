@@ -170,7 +170,7 @@ class HttpCatalogDataSource(
     }
 
     override suspend fun detail(slugOrUrl: String, forceRefresh: Boolean): MovieDetail {
-        val url = if (slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/$slugOrUrl/")
+        val url = if (slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/${slugOrUrl.trim('/')}/")
         var doc = client.fetchDocument(url, forceRefresh, ttlMillis = 15 * 60_000L)
         val visited = hashSetOf(doc.baseUri())
         for (hop in 0 until 3) {

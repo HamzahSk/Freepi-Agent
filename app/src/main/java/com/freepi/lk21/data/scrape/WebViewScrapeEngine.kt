@@ -33,6 +33,12 @@ import com.freepi.lk21.data.remote.SourceException
 import com.freepi.lk21.data.remote.WebViewUnavailableException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
@@ -84,7 +90,7 @@ class WebViewScrapeEngine(
      * Scrape one page, validate the JSON envelope and return it. Retries only
      * transient failures (timeouts/navigation), never an anti-bot challenge.
      */
-    suspend fun scrape(request: ScrapeRequest): ScrapeEnvelope {
+    suspend fun scrape(request: ScrapeRequest, onStreamMetadata: (suspend (JSONObject) -> Boolean)? = null): ScrapeEnvelope {
         if (closed) {
             throw WebViewUnavailableException("The scraping engine has already been closed.")
         }
@@ -95,7 +101,7 @@ class WebViewScrapeEngine(
         while (attempt < maxAttempts) {
             attempt++
             try {
-                val payload = mutex.withLock { execute(request, attempt) }
+                val payload = mutex.withLock { execute(request, attempt, onStreamMetadata) }
                 return ScrapeValidator.parseEnvelope(payload, request.kind)
             } catch (e: AccessBlockedException) {
                 // The site asked for human verification. Never attempt to bypass
@@ -103,8 +109,6 @@ class WebViewScrapeEngine(
                 throw e
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: TimeoutCancellationException) {
-                last = e
             } catch (e: WebViewUnavailableException) {
                 throw e
             } catch (e: Throwable) {
@@ -151,7 +155,7 @@ class WebViewScrapeEngine(
 
     // ------------------------------------------------------------------ task
 
-    private suspend fun execute(request: ScrapeRequest, attempt: Int): JSONObject =
+    private suspend fun execute(request: ScrapeRequest, attempt: Int, onStreamMetadata: (suspend (JSONObject) -> Boolean)?): JSONObject =
         withContext(Dispatchers.IO) {
             val requestId = UUID.randomUUID().toString()
             val preparedScript = scripts.script(request, requestId)
@@ -159,7 +163,7 @@ class WebViewScrapeEngine(
                 ensureWebViewAvailable()
                 val started = SystemClock.elapsedRealtime()
                 val deferred = CompletableDeferred<JSONObject>()
-                val session = Session(requestId, request, deferred, preparedScript)
+                val session = Session(requestId, request, deferred, preparedScript, onStreamMetadata)
 
                 ScrapeLogger.stage(
                     requestId = requestId,
@@ -199,7 +203,7 @@ class WebViewScrapeEngine(
 
                     if (request.kind == ScrapeKind.STREAM) {
                         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                            throw WebViewUnavailableException("PLAYER_CONFIG: update Android System WebView for iframe observation.")
+                            throw WebViewUnavailableException("PLAYER_INITIALIZATION: update Android System WebView for iframe observation.")
                         }
                         // Executes independently in each real iframe, including cross-origin providers.
                         // Observes completed JSON responses without modifying requests or synthesizing gestures.
@@ -209,6 +213,7 @@ class WebViewScrapeEngine(
                     webView.loadUrl(request.embeddingPageUrl ?: request.url, headers)
                     withTimeout(request.timeoutMs) { deferred.await() }
                 } catch (e: TimeoutCancellationException) {
+                    currentCoroutineContext().ensureActive() // propagate caller/total-deadline cancellation
                     ScrapeLogger.failure(
                         requestId = requestId,
                         kind = request.kind,
@@ -218,11 +223,12 @@ class WebViewScrapeEngine(
                         elapsedMs = SystemClock.elapsedRealtime() - started,
                     )
                     throw ScrapeTimeoutException(
-                        "The source page did not finish loading in time. Try again.",
+                        "${session.playerStage}: browser deadline exceeded (state=${session.playerState}).",
                         e,
                     )
                 } finally {
                     session.handler.removeCallbacksAndMessages(null)
+                    session.scope.cancel()
                     destroy(session)
                     ScrapeLogger.stage(
                         requestId = requestId,
@@ -256,8 +262,8 @@ class WebViewScrapeEngine(
             databaseEnabled = true
             javaScriptCanOpenWindowsAutomatically = false
             setSupportMultipleWindows(request.kind == ScrapeKind.STREAM)
-            loadsImagesAutomatically = false
-            blockNetworkImage = true
+            loadsImagesAutomatically = request.kind == ScrapeKind.STREAM
+            blockNetworkImage = request.kind != ScrapeKind.STREAM
             mediaPlaybackRequiresUserGesture = request.kind == ScrapeKind.STREAM
             useWideViewPort = true
             loadWithOverviewMode = true
@@ -332,7 +338,12 @@ class WebViewScrapeEngine(
         val request: ScrapeRequest,
         val deferred: CompletableDeferred<JSONObject>,
         val preparedScript: String,
+        val onStreamMetadata: (suspend (JSONObject) -> Boolean)?,
     ) {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        var playerStage = "INITIAL_REQUEST"
+        var playerState = "navigation_pending"
+        var playerUrl: String? = null
         var documentScript: ScriptHandler? = null
         var reusable = true
         val requestCount = AtomicInteger()
@@ -356,12 +367,15 @@ class WebViewScrapeEngine(
         val client = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, resource: WebResourceRequest): WebResourceResponse? {
                 requestCount.incrementAndGet()
-                if (ScrapeResourcePolicy.skip(resource.url.toString())) {
+                // Player advertising/verification dependencies may affect authorization.
+                if (request.kind != ScrapeKind.STREAM && ScrapeResourcePolicy.skip(resource.url.toString())) {
                     skippedCount.incrementAndGet()
                     return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                 }
                 if (request.kind == ScrapeKind.STREAM) {
                     val target = resource.url.toString()
+                    ScrapeLogger.stage(requestId, request.kind, "resource_request", target,
+                        detail = "method=${resource.method} mainFrame=${resource.isForMainFrame}")
                     if (resource.url.path == "/api.php") ScrapeLogger.stage(requestId, request.kind,
                         "API_RESPONSE", target, detail = "browser request method=${resource.method}")
                     val parent = resource.requestHeaders.entries
@@ -369,7 +383,7 @@ class WebViewScrapeEngine(
                     if (PlayerMetadata.mime(target) != null && parent != null &&
                         parent in trustedPlayerPages) {
                         observedMedia[target] = parent
-                        ScrapeLogger.stage(requestId, request.kind, "MEDIA_METADATA", target,
+                        ScrapeLogger.stage(requestId, request.kind, "PLAYER_METADATA", target,
                             detail = "network candidate; validation pending")
                     }
                 }
@@ -377,7 +391,10 @@ class WebViewScrapeEngine(
             }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                if (url == null || !url.startsWith("http")) return
                 currentUrl = url
+                pageGeneration++
+                injected.set(false)
                 ScrapeLogger.stage(
                     requestId = requestId,
                     kind = request.kind,
@@ -387,6 +404,7 @@ class WebViewScrapeEngine(
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
+                if (url == null || !url.startsWith("http")) return
                 pageGeneration++
                 val generation = pageGeneration
                 currentUrl = url
@@ -413,6 +431,8 @@ class WebViewScrapeEngine(
                 val scheme = runCatching {
                     Uri.parse(request.url.toString()).scheme?.lowercase()
                 }.getOrNull()
+                ScrapeLogger.stage(requestId, this@Session.request.kind, "redirect", request.url.toString(),
+                    detail = "method=${request.method} mainFrame=${request.isForMainFrame} redirect=${request.isRedirect}")
                 // Allow the page's own http(s) redirects; never let the scraper
                 // navigate into intent://, market:// or app deep links.
                 return scheme != "http" && scheme != "https"
@@ -423,8 +443,11 @@ class WebViewScrapeEngine(
                 request: WebResourceRequest,
                 error: WebResourceError,
             ) {
-                if (!request.isForMainFrame || deferred.isCompleted) return
-                val description = error.description?.toString().orEmpty()
+                if (deferred.isCompleted) return
+                ScrapeLogger.stage(requestId, this@Session.request.kind, "resource_failed", request.url.toString(),
+                    detail = "method=${request.method} mainFrame=${request.isForMainFrame} code=${error.errorCode}")
+                if (!request.isForMainFrame) return
+                val description = "network error ${error.errorCode}"
                 ScrapeLogger.failure(
                     requestId = requestId,
                     kind = this@Session.request.kind,
@@ -445,8 +468,11 @@ class WebViewScrapeEngine(
                 request: WebResourceRequest,
                 errorResponse: WebResourceResponse,
             ) {
-                if (!request.isForMainFrame || deferred.isCompleted) return
+                if (deferred.isCompleted) return
                 val code = errorResponse.statusCode
+                ScrapeLogger.stage(requestId, this@Session.request.kind, "resource_http", request.url.toString(),
+                    detail = "method=${request.method} status=$code contentType=${errorResponse.mimeType} mainFrame=${request.isForMainFrame}")
+                if (!request.isForMainFrame) return
                 ScrapeLogger.failure(
                     requestId = requestId,
                     kind = this@Session.request.kind,
@@ -502,7 +528,8 @@ class WebViewScrapeEngine(
                     requestId = requestId,
                     kind = request.kind,
                     stage = "js_console",
-                    detail = "${message.messageLevel()} (provider message omitted)",
+                    url = message.sourceId(),
+                    detail = "level=${message.messageLevel()} line=${message.lineNumber()} (provider text omitted)",
                 )
                 return true
             }
@@ -510,15 +537,36 @@ class WebViewScrapeEngine(
     }
 
     /**
-     * Bridge exposed to the page. Only the active request id is accepted and
-     * only the first payload wins, so a delayed callback from a previous page
-     * can never overwrite a newer result.
+     * Bridge exposed to the page. Only the active request id is accepted.
+     * Catalogs finish on one payload; streams finish only after native validation.
      */
     private class ScrapeBridge(private val session: Session) {
 
         @JavascriptInterface
         fun postMessage(id: String?, payload: String?) {
             if (id != session.requestId) return
+            if (payload == null || payload.length > 1_048_576) return
+            if (session.request.kind == ScrapeKind.STREAM && session.onStreamMetadata != null) {
+                session.scope.launch {
+                    if (!session.deferred.isActive) return@launch
+                    try {
+                        val json = JSONObject(payload)
+                        if (!json.optBoolean("ok")) {
+                            session.deferred.complete(json)
+                            return@launch
+                        }
+                        val data = json.optJSONObject("data") ?: return@launch
+                        val page = PlayerMetadata.absolute(data.optString("pageUrl"), session.request.url)
+                        if (page == null || page !in session.trustedPlayerPages) return@launch
+                        if (!session.delivered.compareAndSet(false, true)) return@launch
+                        try {
+                            if (session.onStreamMetadata.invoke(data)) session.deferred.complete(json)
+                        } finally { session.delivered.set(false) }
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { session.fail(e) }
+                }
+                return
+            }
             if (!session.delivered.compareAndSet(false, true)) return
 
             ScrapeLogger.stage(
@@ -557,6 +605,7 @@ class WebViewScrapeEngine(
 
         @JavascriptInterface
         fun logStage(stage: String?, message: String?) {
+            if (session.request.kind == ScrapeKind.STREAM) return // only enum-valued playerState diagnostics
             ScrapeLogger.stage(
                 requestId = session.requestId,
                 kind = session.request.kind,
@@ -564,6 +613,29 @@ class WebViewScrapeEngine(
                 url = session.currentUrl,
                 detail = message,
             )
+        }
+
+        @JavascriptInterface
+        fun playerState(id: String?, stage: String?, state: String?, pageUrl: String?) {
+            if (id != session.requestId) return
+            val stages = setOf("PLAYER_HTML", "DEPENDENCY_LOADING", "PLAYER_INITIALIZATION", "PLAYER_METADATA")
+            val states = setOf("loading", "interactive", "complete", "dependencies_pending", "dependencies_failed",
+                "waiting_for_player", "ready", "setup_error", "interaction_required", "metadata_pending", "js_error", "resource_failed")
+            if (stage !in stages || state !in states) return
+            session.handler.post {
+                session.playerStage = stage!!
+                session.playerState = state!!
+                session.playerUrl = PlayerMetadata.absolute(pageUrl.orEmpty(), session.request.url)
+                ScrapeLogger.stage(session.requestId, session.request.kind, stage, session.playerUrl, detail = "state=$state")
+            }
+        }
+
+        @JavascriptInterface
+        fun javascriptError(id: String?, type: String?, line: Int, column: Int, source: String?) {
+            if (id != session.requestId) return
+            val safeType = type?.takeIf { it in setOf("Error", "TypeError", "ReferenceError", "SyntaxError", "RangeError", "URIError", "EvalError") } ?: "Error"
+            ScrapeLogger.stage(session.requestId, session.request.kind, "javascript_error", source,
+                detail = "type=$safeType line=${line.coerceAtLeast(0)} column=${column.coerceAtLeast(0)}")
         }
     }
 }

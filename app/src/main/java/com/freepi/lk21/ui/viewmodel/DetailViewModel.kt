@@ -18,6 +18,8 @@ data class DetailUiState(
     val detail: MovieDetail? = null,
     val error: String? = null,
     val progress: WatchProgressEntity? = null,
+    val loadingProgress: Boolean = false,
+    val progressError: String? = null,
 )
 
 class DetailViewModel(
@@ -43,8 +45,14 @@ class DetailViewModel(
         loadJob = viewModelScope.launch {
             try {
                 val detail = repository.detail(slug, forceRefresh)
-                val progress = repository.getProgress(detail.slug)
-                _state.value = DetailUiState(loading = false, detail = detail, progress = progress)
+                _state.value = DetailUiState(loading = false, detail = detail, loadingProgress = true)
+                try {
+                    val progress = repository.getProgress(detail.slug)
+                    _state.value = _state.value.copy(progress = progress, loadingProgress = false)
+                } catch (t: Throwable) {
+                    if (t is kotlinx.coroutines.CancellationException) throw t
+                    _state.value = _state.value.copy(loadingProgress = false, progressError = "Watch progress is unavailable.")
+                }
             } catch (t: Throwable) {
                 if (t is kotlinx.coroutines.CancellationException) throw t
                 _state.value = _state.value.copy(loading = false, error = t.userMessage())

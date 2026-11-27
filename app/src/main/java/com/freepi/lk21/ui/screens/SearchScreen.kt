@@ -36,7 +36,7 @@ import com.freepi.lk21.data.model.MovieCard
 import com.freepi.lk21.ui.components.ChipLabel
 import com.freepi.lk21.ui.components.EmptyState
 import com.freepi.lk21.ui.components.ErrorState
-import com.freepi.lk21.ui.components.LoadingState
+import com.freepi.lk21.ui.components.MovieGridSkeleton
 import com.freepi.lk21.ui.components.MovieGrid
 import com.freepi.lk21.ui.theme.Primary
 import com.freepi.lk21.ui.theme.SurfaceElevated
@@ -92,8 +92,8 @@ fun SearchScreen(
         Spacer(Modifier.height(12.dp))
 
         when {
-            state.loading -> LoadingState("Searching…")
-            state.error != null && state.items.isEmpty() -> ErrorState(state.error, null)
+            state.loading -> MovieGridSkeleton("Searching catalog")
+            state.error != null && state.items.isEmpty() -> ErrorState(state.error, onSubmit)
             state.query.trim().length < 2 -> SearchSuggestions(onPick = onQueryChange)
             state.searched && state.items.isEmpty() -> EmptyState(
                 "No results for “${state.query}”. Try a different keyword."
@@ -103,6 +103,7 @@ fun SearchScreen(
                 onMovieClick = onMovieClick,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
                 footer = {
+                    state.error?.let { Text(it, color = TextSecondary, modifier = Modifier.padding(16.dp)) }
                     GridFooter(
                         loadingMore = state.loadingMore,
                         hasMore = state.hasMore,
@@ -116,7 +117,7 @@ fun SearchScreen(
 
 @Composable
 private fun SearchSuggestions(onPick: (String) -> Unit) {
-    val suggestions = listOf("Action", "Comedy", "Horror", "Drama", "2025", "Sci-Fi", "Animation")
+    val suggestions = listOf("Action", "Comedy", "Horror", "Drama", "2026", "Sci-Fi", "Animation")
     Column(Modifier.padding(16.dp)) {
         Text(
             "Try searching for",
@@ -131,12 +132,6 @@ private fun SearchSuggestions(onPick: (String) -> Unit) {
         }
         Spacer(Modifier.height(24.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(14.dp),
-                strokeWidth = 2.dp,
-                color = Primary,
-            )
-            Spacer(Modifier.width(8.dp))
             Text(
                 "Results come straight from the live catalog.",
                 style = MaterialTheme.typography.bodyMedium,

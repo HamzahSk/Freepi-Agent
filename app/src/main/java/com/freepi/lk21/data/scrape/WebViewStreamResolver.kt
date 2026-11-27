@@ -14,7 +14,7 @@ class WebViewStreamResolver(
     private val options: PlayerExtractionOptions = PlayerExtractionOptions(),
 ) : StreamProvider {
     override suspend fun resolve(detail: MovieDetail, source: StreamSource): ResolvedStream =
-        resolvePlayerSources(client, source, detail.url, options) { initial, catalog, provider ->
+        resolvePlayerSources(client, source, detail.url, options) { initial, catalog, provider, validate ->
             val envelope = engine.scrape(ScrapeRequest(
                 kind = ScrapeKind.STREAM,
                 url = initial,
@@ -24,7 +24,7 @@ class WebViewStreamResolver(
                 streamMaxDepth = options.maxDepth,
                 timeoutMs = options.browserTimeoutMs,
                 retries = 0,
-            ))
+            ), onStreamMetadata = validate)
             ScrapeValidator.requireStream(envelope)
         }
 }

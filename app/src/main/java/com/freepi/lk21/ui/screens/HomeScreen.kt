@@ -47,7 +47,7 @@ import com.freepi.lk21.data.model.MovieCard
 import com.freepi.lk21.ui.components.ChipLabel
 import com.freepi.lk21.ui.components.EmptyState
 import com.freepi.lk21.ui.components.ErrorState
-import com.freepi.lk21.ui.components.LoadingState
+import com.freepi.lk21.ui.components.HomeSkeleton
 import com.freepi.lk21.ui.components.MoviePosterCard
 import com.freepi.lk21.ui.components.MovieRowSection
 import com.freepi.lk21.ui.components.SectionHeader
@@ -67,7 +67,19 @@ fun HomeScreen(
     onRefresh: () -> Unit,
 ) {
     when {
-        state.loading -> LoadingState("Loading movies…")
+        state.loading -> HomeSkeleton(
+            header = { BrandBar(false, onSearch, onRefresh) },
+            continueWatching = {
+                if (continueWatching.isNotEmpty()) {
+                    SectionHeader("Continue watching")
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(continueWatching, key = { it.slug }) { entry ->
+                            MoviePosterCard(entry.toCard(), { onResume(entry) }, Modifier.width(124.dp))
+                        }
+                    }
+                }
+            },
+        )
         state.error != null && state.data == null -> ErrorState(state.error, onRefresh)
         state.data == null -> EmptyState("No movies available right now.")
         else -> HomeContent(

@@ -62,7 +62,12 @@ object ScrapeLogger {
         append(" id=").append(requestId.take(8))
         append(" kind=").append(kind.name.lowercase())
         append(" stage=").append(stage)
-        if (url != null) append(" url=").append(safeUrl(url))
+        if (url != null) {
+            append(" url=").append(safeUrl(url))
+            // Correlate resources at one origin without exposing signed path/query credentials.
+            append(" urlId=").append(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(url.toByteArray()).take(6).joinToString("") { "%02x".format(it) })
+        }
         if (elapsedMs != null) append(" elapsedMs=").append(elapsedMs)
         if (!detail.isNullOrBlank()) append(" detail=").append(sanitize(detail).take(300).replace('\n', ' '))
     }

@@ -67,8 +67,7 @@ class PlayerExtractionTest {
         assertEquals("https://abyssplayer.com", result.headers["Origin"])
         assertEquals("id", result.subtitles.single().language)
         assertEquals("https://cdn.example/sub/id.m3u8", result.subtitles.single().url)
-        assertEquals(listOf(PlayerStage.INITIAL_PAGE, PlayerStage.API_RESPONSE, PlayerStage.EMBED_URL,
-            PlayerStage.PROVIDER_PAGE, PlayerStage.PLAYER_CONFIG, PlayerStage.MEDIA_METADATA, PlayerStage.VALIDATION), stages.distinct())
+        assertEquals(listOf(PlayerStage.INITIAL_REQUEST, PlayerStage.PLAYER_HTML, PlayerStage.API_RESPONSE, PlayerStage.EMBED_URL, PlayerStage.PLAYER_INITIALIZATION, PlayerStage.PLAYER_METADATA, PlayerStage.STREAM_VALIDATION), stages.distinct())
     }
 
     @Test fun browserMetadataIsCandidateUntilValidated() = runBlocking {
@@ -78,16 +77,16 @@ class PlayerExtractionTest {
                 PlayerResponse(url, "<?xml version=\"1.0\"?><MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\"><Period><AdaptationSet><Representation/></AdaptationSet></Period></MPD>", "application/dash+xml")
                 else PlayerResponse(url, "<html><video></video></html>") },
             post = { _, _ -> error("no API") },
-            browser = { _, _, _ -> JSONObject().put("pageUrl", initial).put("media", JSONArray()
+            browser = { _, _, _, _ -> JSONObject().put("pageUrl", initial).put("media", JSONArray()
                 .put(JSONObject().put("url", extensionless))) })
         assertEquals("application/dash+xml", extraction.resolve(initial, catalog).mimeType)
     }
 
     @Test fun initializationFailureRetainsCorrectStage() = runBlocking {
         val extraction = PlayerExtraction(get = { u, _, _ -> PlayerResponse(u, "<html></html>") },
-            post = { _, _ -> error("no API") }, browser = { _, _, _ -> error("browser unavailable") })
+            post = { _, _ -> error("no API") }, browser = { _, _, _, _ -> error("browser unavailable") })
         assertTrue(runCatching { extraction.resolve(initial, catalog) }.exceptionOrNull()!!.message!!
-            .startsWith("PLAYER_CONFIG:"))
+            .startsWith("PLAYER_INITIALIZATION:"))
     }
 
     @Test fun providerHtmlAndSegmentsNeverValidateAsMedia() {
@@ -107,7 +106,7 @@ class PlayerExtractionTest {
     @Test fun accessBlockNeverTriggersBrowserFallback() = runBlocking {
         var invoked = false
         val extraction = PlayerExtraction(get = { _, _, _ -> throw AccessBlockedException() },
-            post = { _, _ -> error("no API") }, browser = { _, _, _ -> invoked = true; JSONObject() })
+            post = { _, _ -> error("no API") }, browser = { _, _, _, _ -> invoked = true; JSONObject() })
         assertTrue(runCatching { extraction.resolve(initial, catalog) }.exceptionOrNull() is AccessBlockedException)
         assertFalse(invoked)
     }
@@ -115,9 +114,9 @@ class PlayerExtractionTest {
         val extraction = PlayerExtraction(
             get = { u, _, _ -> PlayerResponse(u, if (u == initial) captured() else fixture("live-provider.html")) },
             post = { r, _ -> PlayerResponse(r.url, fixture("live-api.json")) },
-            browser = { _, _, _ -> JSONObject() })
+            browser = { _, _, _, _ -> JSONObject() })
         val error = runCatching { extraction.resolve(initial, catalog) }.exceptionOrNull()!!
-        assertTrue(error.message!!, error.message!!.startsWith("MEDIA_METADATA:"))
+        assertTrue(error.message!!, error.message!!.contains("provider requires user interaction or advertising flow"))
     }
 
     @Test fun dashSubtitleBasesAndLanguageArePreserved() {
@@ -138,7 +137,7 @@ class PlayerExtractionTest {
             get = { u, _, _ -> if (u == initial) PlayerResponse(u, captured()) else error("provider unavailable") },
             post = { r, _ -> PlayerResponse(r.url, fixture("live-api.json")) })
         assertTrue(runCatching { extraction.resolve(initial, catalog) }.exceptionOrNull()!!.message!!
-            .startsWith("PROVIDER_PAGE:"))
+            .startsWith("PLAYER_HTML:"))
     }
 
 }

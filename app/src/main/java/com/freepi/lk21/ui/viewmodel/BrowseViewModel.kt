@@ -15,6 +15,8 @@ data class BrowseUiState(
     val title: String = "",
     val path: String = "",
     val filters: FilterCatalog? = null,
+    val filtersLoading: Boolean = true,
+    val filtersError: String? = null,
     val items: List<MovieCard> = emptyList(),
     val page: Int = 1,
     val loading: Boolean = true,
@@ -46,13 +48,19 @@ class BrowseViewModel(
 
     private fun loadFilters() {
         viewModelScope.launch {
-            val filters = runCatching { repository.home().filters }.getOrNull()
-            if (filters != null) _state.value = _state.value.copy(filters = filters)
+            try {
+                val filters = repository.home().filters
+                _state.value = _state.value.copy(filters = filters, filtersLoading = false, filtersError = null)
+            } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                _state.value = _state.value.copy(filtersLoading = false, filtersError = "Filter options are unavailable. You can still browse titles.")
+            }
         }
     }
 
     fun loadFirst(path: String, title: String) {
         pageJob?.cancel()
+        loadingJob = false
         _state.value = _state.value.copy(
             path = path,
             title = title,

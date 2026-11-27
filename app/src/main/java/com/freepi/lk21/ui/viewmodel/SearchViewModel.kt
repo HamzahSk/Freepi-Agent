@@ -46,6 +46,9 @@ class SearchViewModel(private val repository: MovieRepository) : ViewModel() {
             )
             return
         }
+        // Show suggestions/results placeholders during debounce; never label old results with a new query.
+        nextUrl = null
+        _state.value = _state.value.copy(items = emptyList(), loading = true, hasMore = false, error = null)
         debounceJob = viewModelScope.launch {
             delay(450)
             runSearch(query)
