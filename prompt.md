@@ -1,191 +1,229 @@
-Task: Fix Recursive LK21 Stream Extraction & Optimize Scraper Performance
+Task: Rework WebView Request Handling, Player Extraction & Native UI/UX
 
-The streaming parser still fails because LK21 uses multiple layers of embedded players. Additionally, application data loading is unnecessarily slow.
+The application still has issues with WebView-based data extraction, especially streaming pages. Additionally, the loading experience is too minimal and needs a proper skeleton UI.
 
-Investigate and fix both issues without breaking existing functionality.
+Investigate the existing implementation and improve the architecture without breaking working functionality.
 
-1. Understand the Actual Multi-Layer Player Structure
+1. Investigate the Current WebView Request Method
 
-Use the captured responses and requests in "lk21-request/" as the primary reference.
+Use the latest captured player HTML as a reference.
 
-The verified loading sequence so far:
+The response is a "Bew Player" HTML page containing:
 
-Layer 1: LK21 Popup Player
+- External JWPlayer scripts.
+- "core.bundle.js" and "lite.bundle.js".
+- Dynamic initialization through "window.load".
+- A Base64-encoded "datas" configuration.
+- A "SoTrym()" initialization function.
+- An overlay and player initialization logic.
 
-- Loads the initial player page.
-- Sends a POST request to "/api.php".
-- Receives JSON containing "embedUrl".
+This is not an actual HLS manifest. It is an intermediate player document.
 
-Example:
-"{"embedUrl":"https://playcdn.de/...?..."} "
+Investigate whether the current implementation incorrectly treats the initial HTML response as the final stream data.
 
-Layer 2: playcdn.de Player
+Audit:
 
-- Loads the returned embed URL.
-- Contains "#vstr", a JWPlayer initialization script, and several JavaScript dependencies:
-  - "hls-0.14.17.js"
-  - "p2p-jwplayer.hlsjs.min.js"
-  - "p2p-media-loader-core.min.js"
-  - "p2p-media-loader-hlsjs.min.js"
-  - "jwplayer.js"
-  - "init_player.js"
+- WebView navigation lifecycle.
+- JavaScript execution timing.
+- DOM readiness versus complete page loading.
+- External JavaScript dependencies.
+- Redirect handling.
+- Cookies and legitimate session context.
+- Request headers and content types.
+- WebView resource interception.
+- JavaScript bridge communication.
+- WebView destruction and premature cancellation.
 
-The actual stream may only become available after the second player initializes.
+2. Rework the Request and Extraction Pipeline
 
-Do not stop extraction after obtaining "embedUrl".
+Separate the extraction process into clearly defined stages:
 
-2. Implement Recursive Player Inspection
+"INITIAL_REQUEST → PLAYER_HTML → DEPENDENCY_LOADING → PLAYER_INITIALIZATION → PLAYER_METADATA → STREAM_VALIDATION"
 
-Build a reusable, multi-layer player extraction pipeline.
+Requirements:
 
-- Follow legitimate player iframe/embed references.
-- Inspect each newly discovered player page.
-- Detect player initialization scripts and configuration sources.
-- Identify dynamically generated media metadata.
-- Inspect relevant network responses and player configuration.
-- Detect HLS manifests and available subtitle metadata.
-- Normalize the final results into the existing Kotlin stream models.
+- Use native HTTP requests for ordinary HTML and JSON endpoints.
+- Use WebView only when actual browser execution or DOM interaction is necessary.
+- Do not use Rhino as a substitute for browser APIs.
+- Wait for the appropriate player initialization state instead of relying only on fixed delays.
+- Detect when the page is still loading dependencies.
+- Capture relevant JavaScript errors and failed resource requests.
+- Avoid repeatedly reloading the same page.
+- Handle redirects and relative URLs correctly.
+- Apply appropriate timeouts and cancellation.
 
-Support additional nested player layers when encountered instead of assuming a fixed depth of two.
+Use WebView's built-in Chromium JavaScript engine for browser-dependent processing.
 
-Implement:
+Do not execute the same request through both HTTP and WebView unnecessarily.
 
-- Configurable maximum nesting depth.
-- Visited URL tracking to prevent loops.
-- Duplicate source detection.
-- Per-layer timeout and error handling.
-- Proper request context and relative URL resolution.
+3. Improve Player Metadata Extraction
 
-Do not recursively download every linked resource. Only inspect resources relevant to player initialization and media metadata.
+Investigate the player configuration and initialization process.
 
-3. Investigate JWPlayer Initialization
+Determine whether the player exposes legitimate media metadata through:
 
-Inspect "init_player.js" and its actual runtime behavior.
+- JWPlayer configuration.
+- Player initialization callbacks.
+- Documented player APIs.
+- Accessible network responses.
+- Publicly available manifest references.
 
-Determine:
+Distinguish:
 
-- Where player configuration comes from.
-- Whether configuration is embedded in HTML or fetched separately.
-- Which requests return media metadata.
-- When the HLS manifest becomes available.
-- How subtitles are declared.
-- Whether the player requires an actual user gesture.
-
-Use Chromium/Playwright during development to compare network activity and actual browser behavior.
-
-Use the existing Android WebView infrastructure for browser-dependent extraction.
-
-Do not mistake JavaScript library filenames for actual stream sources.
-
-Do not simulate advertisement clicks, follow advertising links, bypass anti-bot protections, or circumvent access restrictions.
-
-4. Fix Stream Validation
-
-Only return a playable stream when its actual media metadata has been identified and validated.
-
-Support:
-
-- HLS (".m3u8")
-- DASH (".mpd")
-- Progressive video
-- Subtitle URLs and language metadata
-
-Distinguish clearly between:
-
-- Original LK21 player URL.
-- Provider embed URL.
-- Nested player URL.
-- Actual media manifest URL.
+- HTML player documents.
+- Embed URLs.
+- Player configuration.
+- Actual media manifests.
 - Individual media segments.
 
-Preserve required playback metadata when legitimately available.
+Only pass validated and authorized stream metadata to Media3 ExoPlayer.
 
-5. Optimize Application Loading Performance
+Do not assume the Base64 payload is the final stream URL. Do not attempt to bypass DRM, authentication, anti-bot protection, or advertising restrictions.
 
-Investigate why catalog, details, and other data take too long to load.
+If the player cannot expose an authorized playable source, report the exact limitation rather than returning an HTML document as a stream.
 
-Audit the entire request pipeline.
+4. Improve Extraction Diagnostics
 
-Look for:
+Add structured logging for:
 
-- Duplicate HTTP requests.
-- Unnecessary JavaScript and CSS downloads.
-- Tracking and analytics requests.
-- Unused images and resources.
-- Repeated page loading.
-- Excessive WebView initialization.
-- Blocking operations on the main thread.
-- Unnecessary parsing and JSON conversions.
-- Sequential requests that could safely run concurrently.
-- Missing caching.
-- Excessive retry delays.
-- Requests that continue after the user leaves a screen.
+- Request URL and method.
+- HTTP status and content type.
+- Redirect destination.
+- Page loading state.
+- JavaScript execution errors.
+- Failed resource requests.
+- Player initialization state.
+- Metadata extraction results.
+- Total extraction duration.
 
-Performance improvements
+Never log sensitive cookies, tokens, or credentials.
 
-- Reuse HTTP clients and connections.
-- Reuse WebView instances where safe.
-- Avoid initializing a new WebView for every extraction.
-- Use lightweight HTML parsing whenever browser execution is unnecessary.
-- Intercept and skip irrelevant resources where safe.
-- Prioritize essential HTML, API responses, and player configuration.
-- Cache reusable catalog and metadata responses with appropriate TTL.
+Make it possible to identify exactly which stage failed.
+
+5. Redesign Loading UI/UX
+
+The current application mostly displays a spinning loading indicator. Replace this with a polished skeleton-loading experience.
+
+Important: The application should display its actual screen structure immediately, even while data is still being fetched.
+
+Implement skeleton states for:
+
+Home
+
+- Featured hero banner skeleton.
+- Horizontal movie card placeholders.
+- Section headings.
+- Poster placeholders.
+- Bottom navigation remains visible.
+
+Catalog / Browse
+
+- Search bar.
+- Filter controls.
+- Movie grid with poster skeletons.
+- Title and metadata placeholders.
+- Pagination or loading-more indicators.
+
+Search
+
+- Search input displayed immediately.
+- Suggestion loading state.
+- Search result skeleton cards.
+- Empty and error states.
+
+Movie Details
+
+- Backdrop placeholder.
+- Poster placeholder.
+- Title and metadata skeletons.
+- Synopsis placeholder.
+- Cast and provider sections.
+- Loading states for individual sections.
+
+Streaming / Player
+
+- Native player container.
+- Loading animation inside the player.
+- Stream provider selection.
+- Subtitle and quality controls in appropriate loading states.
+- Clear player initialization and error messages.
+
+6. Progressive Data Loading
+
+Do not wait for every request to finish before rendering the screen.
+
+Implement progressive rendering:
+
+1. Render the screen layout immediately.
+2. Load essential data first.
+3. Populate available sections as soon as their data arrives.
+4. Load secondary metadata independently.
+5. Keep unavailable sections isolated instead of blocking the entire screen.
+
+Use separate loading states for individual sections.
+
+For example, a movie poster and title should appear as soon as their data is available, even if cast information or provider metadata is still loading.
+
+Avoid unnecessary full-screen loading overlays.
+
+7. Loading Animation and Visual Quality
+
+Improve the visual presentation:
+
+- Use subtle skeleton shimmer or pulse animations.
+- Use consistent poster aspect ratios.
+- Apply appropriate rounded corners and spacing.
+- Avoid excessive animations that consume resources.
+- Use smooth transitions from skeleton to actual content.
+- Prevent layout shifts when data arrives.
+- Respect the existing dark cinema theme.
+- Maintain responsive layouts.
+
+The loading state should resemble the final screen, not a collection of unrelated gray boxes.
+
+8. Performance Optimization
+
+Investigate slow loading throughout the application.
+
+- Eliminate duplicate requests.
+- Reuse HTTP clients and WebView instances where safe.
+- Cache reusable responses.
 - Deduplicate in-flight requests.
 - Cancel obsolete requests.
-- Use bounded concurrency instead of uncontrolled parallel requests.
-- Avoid blocking the UI thread.
-- Load nonessential metadata lazily.
-- Prevent unnecessary repeated scraping when valid cached data exists.
+- Avoid unnecessary external resource downloads.
+- Use bounded concurrency.
+- Avoid blocking the main thread.
+- Load secondary data lazily.
+- Avoid repeatedly initializing JavaScript engines.
+- Measure request and parsing durations.
 
-Do not block essential JavaScript, API requests, player scripts, or other resources required for successful extraction.
+Do not block essential player scripts or required resources.
 
-6. Improve Logging and Diagnostics
+9. Preserve Existing Architecture
 
-Add timing measurements for each stage:
+Keep:
 
-"INITIAL_PAGE → API_RESPONSE → EMBED_URL → PROVIDER_PAGE → PLAYER_CONFIG → MEDIA_METADATA → VALIDATION"
+- Kotlin.
+- Jetpack Compose.
+- Existing WebView infrastructure.
+- Rhino where appropriate.
+- Media3 ExoPlayer.
+- Room database.
+- Existing repository and navigation architecture.
 
-Record:
+Do not rewrite unrelated working modules.
 
-- Request duration.
-- Parsing duration.
-- Number of requests.
-- Cache hits and misses.
-- Nested player depth.
-- Extraction success or failure.
+10. Final Verification
 
-Avoid logging sensitive cookies, tokens, or credentials.
+Test the complete application flow:
 
-7. Testing
-
-Create tests for:
-
-- The initial LK21 popup player.
-- "/api.php" JSON parsing.
-- "playcdn.de" player initialization.
-- Nested iframe discovery.
-- Dynamic player configuration.
-- HLS manifest detection.
-- Subtitle extraction.
-- Recursive depth limits.
-- Circular embed references.
-- Duplicate requests.
-- Timeout and unavailable providers.
-
-Use captured traffic as test fixtures, but never hardcode captured response bodies as production data.
-
-Compare extraction results against actual accessible browser responses.
-
-8. Preserve Existing Functionality
-
-- Keep the native Jetpack Compose UI.
-- Keep WebView as an internal extraction engine.
-- Keep Rhino for suitable JavaScript processing.
-- Preserve Media3 ExoPlayer and Room.
-- Do not rewrite working catalog, search, details, or unrelated modules.
-- Respect website access restrictions and only use authorized content.
-
-9. Final Verification
+- Home catalog.
+- Search and suggestions.
+- Movie details.
+- Provider selection.
+- Player initialization.
+- Stream metadata validation.
+- Loading and error states.
 
 Run:
 
@@ -195,13 +233,12 @@ Run:
 
 Provide a report containing:
 
-1. Exact root cause of the multi-layer streaming failure.
-2. Complete verified player-loading sequence.
-3. Successfully identified stream formats.
-4. Performance bottlenecks discovered.
-5. Number of unnecessary requests eliminated.
-6. Before/after loading and extraction timings.
+1. Root cause of WebView extraction failures.
+2. Changes to the request architecture.
+3. Player initialization findings.
+4. Stream extraction results.
+5. Loading performance improvements with before/after measurements.
+6. Screens updated with skeleton loading.
 7. Test and build results.
-8. Remaining limitations.
 
-Do not claim performance improvements without measurements. Prioritize correctness first, then optimize without removing resources required for normal operation.
+Do not claim a player works simply because its HTML page loaded successfully.

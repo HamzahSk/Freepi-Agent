@@ -167,6 +167,7 @@ class PlayerViewModel(
                     resolveAndPlay(index.coerceIn(0, detail.sources.lastIndex))
                 }
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 _state.value = _state.value.copy(
                     loadingDetail = false,
                     buffering = false,
@@ -202,6 +203,7 @@ class PlayerViewModel(
                 _state.value = _state.value.copy(resolving = false, resolved = resolved)
                 prepare(resolved)
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 _state.value = _state.value.copy(
                     resolving = false,
                     buffering = false,
@@ -212,11 +214,18 @@ class PlayerViewModel(
     }
 
     private fun prepare(resolved: ResolvedStream) {
-        val subtitles = resolved.subtitles.distinctBy { it.url }.mapIndexed { index, track ->
+        val subtitles = resolved.subtitles.distinctBy { it.url }.filterNot {
+            // HLS/DASH subtitle renditions are selected through the parent manifest by Media3.
+            com.freepi.lk21.data.remote.PlayerMetadata.mime(it.url) in
+                listOf("application/x-mpegURL", "application/dash+xml")
+        }.mapIndexed { index, track ->
             MediaItem.SubtitleConfiguration.Builder(Uri.parse(track.url))
                 .setMimeType(
-                    if (track.url.contains(".srt", ignoreCase = true)) MimeTypes.APPLICATION_SUBRIP
-                    else MimeTypes.TEXT_VTT
+                    when {
+                        track.url.substringBefore('?').endsWith(".srt", true) -> MimeTypes.APPLICATION_SUBRIP
+                        track.url.substringBefore('?').endsWith(".ttml", true) -> MimeTypes.APPLICATION_TTML
+                        else -> MimeTypes.TEXT_VTT
+                    }
                 )
                 .setLanguage(track.language ?: "und")
                 .setLabel(track.label)

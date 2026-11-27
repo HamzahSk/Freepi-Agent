@@ -43,6 +43,9 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import androidx.webkit.ScriptHandler
+import java.io.ByteArrayInputStream
 
 /**
  * Centralised hidden-WebView scraping engine.
@@ -51,8 +54,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   website -> hidden WebView (Chromium) -> injected DOM JavaScript ->
  *   JSON bridge -> Kotlin validation/mapping -> repositories -> native Compose UI.
  *
- * The WebView is never attached to a visible view hierarchy and is destroyed
- * after every task. Tasks are serialised with a [Mutex], so concurrent screens
+ * The WebView is never attached to a visible view hierarchy. One warm instance
+ * is reused after navigation/bridge cleanup; a crashed renderer is discarded. Tasks are serialised with a [Mutex], so concurrent screens
  * (home + browse + detail) can never observe each other's page state.
  */
 class WebViewScrapeEngine(
@@ -72,6 +75,7 @@ class WebViewScrapeEngine(
 
     private val appContext = context.applicationContext
     private val mutex = Mutex()
+    private var pooledWebView: WebView? = null
 
     @Volatile
     private var closed = false
@@ -139,89 +143,96 @@ class WebViewScrapeEngine(
 
     fun close() {
         closed = true
+        Handler(Looper.getMainLooper()).post {
+            pooledWebView?.destroy()
+            pooledWebView = null
+        }
     }
 
     // ------------------------------------------------------------------ task
 
     private suspend fun execute(request: ScrapeRequest, attempt: Int): JSONObject =
-        withContext(Dispatchers.Main.immediate) {
-            ensureWebViewAvailable()
-
+        withContext(Dispatchers.IO) {
             val requestId = UUID.randomUUID().toString()
-            val started = SystemClock.elapsedRealtime()
-            val deferred = CompletableDeferred<JSONObject>()
-            val session = Session(requestId, request, deferred)
+            val preparedScript = scripts.script(request, requestId)
+            withContext(Dispatchers.Main.immediate) {
+                ensureWebViewAvailable()
+                val started = SystemClock.elapsedRealtime()
+                val deferred = CompletableDeferred<JSONObject>()
+                val session = Session(requestId, request, deferred, preparedScript)
 
-            ScrapeLogger.stage(
-                requestId = requestId,
-                kind = request.kind,
-                stage = "start",
-                url = request.url,
-                detail = "attempt=$attempt timeoutMs=${request.timeoutMs}",
-            )
-
-            try {
-                val webView = try {
-                    WebView(appContext)
-                } catch (t: Throwable) {
-                    throw WebViewUnavailableException(
-                        "Android System WebView is missing or broken on this device.",
-                        t,
-                    )
-                }
-                session.webView = webView
-                configure(webView, request)
-                webView.addJavascriptInterface(session.bridge, ScrapeSchemas.BRIDGE_NAME)
-                webView.webViewClient = session.client
-                webView.webChromeClient = session.chromeClient
-
-                val headers = buildMap {
-                    put("User-Agent", USER_AGENT)
-                    put(
-                        "Accept",
-                        "text/html,application/xhtml+xml,application/xml;q=0.9," +
-                            "image/avif,image/webp,*/*;q=0.8",
-                    )
-                    put("Accept-Language", "en-US,en;q=0.9,id;q=0.8")
-                    put("Upgrade-Insecure-Requests", "1")
-                    request.referer?.let { put("Referer", it) }
-                    putAll(request.extraHeaders)
-                }
-
-                if (request.kind == ScrapeKind.STREAM) {
-                    if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                        throw WebViewUnavailableException("PLAYER_INITIALIZATION: update Android System WebView for iframe observation.")
-                    }
-                    // Executes independently in each real iframe, including cross-origin providers.
-                    // No provider fetch/timer APIs are replaced and no gestures are synthesized.
-                    WebViewCompat.addDocumentStartJavaScript(webView,
-                        scripts.script(request, requestId), setOf("*"))
-                }
-                webView.loadUrl(request.embeddingPageUrl ?: request.url, headers)
-                withTimeout(request.timeoutMs) { deferred.await() }
-            } catch (e: TimeoutCancellationException) {
-                ScrapeLogger.failure(
-                    requestId = requestId,
-                    kind = request.kind,
-                    stage = "timeout",
-                    error = e,
-                    url = request.url,
-                    elapsedMs = SystemClock.elapsedRealtime() - started,
-                )
-                throw ScrapeTimeoutException(
-                    "The source page did not finish loading in time. Try again.",
-                    e,
-                )
-            } finally {
-                session.handler.removeCallbacksAndMessages(null)
-                destroy(session)
                 ScrapeLogger.stage(
                     requestId = requestId,
                     kind = request.kind,
-                    stage = "cleanup",
+                    stage = "start",
                     url = request.url,
-                    elapsedMs = SystemClock.elapsedRealtime() - started,
+                    detail = "attempt=$attempt timeoutMs=${request.timeoutMs}",
                 )
+
+                try {
+                    val webView = try {
+                        pooledWebView?.also { pooledWebView = null } ?: WebView(appContext)
+                    } catch (t: Throwable) {
+                        throw WebViewUnavailableException(
+                            "Android System WebView is missing or broken on this device.",
+                            t,
+                        )
+                    }
+                    session.webView = webView
+                    configure(webView, request)
+                    webView.addJavascriptInterface(session.bridge, ScrapeSchemas.BRIDGE_NAME)
+                    webView.webViewClient = session.client
+                    webView.webChromeClient = session.chromeClient
+
+                    val headers = buildMap {
+                        put("User-Agent", USER_AGENT)
+                        put(
+                            "Accept",
+                            "text/html,application/xhtml+xml,application/xml;q=0.9," +
+                                "image/avif,image/webp,*/*;q=0.8",
+                        )
+                        put("Accept-Language", "en-US,en;q=0.9,id;q=0.8")
+                        put("Upgrade-Insecure-Requests", "1")
+                        request.referer?.let { put("Referer", it) }
+                        putAll(request.extraHeaders)
+                    }
+
+                    if (request.kind == ScrapeKind.STREAM) {
+                        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                            throw WebViewUnavailableException("PLAYER_CONFIG: update Android System WebView for iframe observation.")
+                        }
+                        // Executes independently in each real iframe, including cross-origin providers.
+                        // Observes completed JSON responses without modifying requests or synthesizing gestures.
+                        session.documentScript = WebViewCompat.addDocumentStartJavaScript(webView,
+                            preparedScript, setOf("*"))
+                    }
+                    webView.loadUrl(request.embeddingPageUrl ?: request.url, headers)
+                    withTimeout(request.timeoutMs) { deferred.await() }
+                } catch (e: TimeoutCancellationException) {
+                    ScrapeLogger.failure(
+                        requestId = requestId,
+                        kind = request.kind,
+                        stage = "timeout",
+                        error = e,
+                        url = request.url,
+                        elapsedMs = SystemClock.elapsedRealtime() - started,
+                    )
+                    throw ScrapeTimeoutException(
+                        "The source page did not finish loading in time. Try again.",
+                        e,
+                    )
+                } finally {
+                    session.handler.removeCallbacksAndMessages(null)
+                    destroy(session)
+                    ScrapeLogger.stage(
+                        requestId = requestId,
+                        kind = request.kind,
+                        stage = "cleanup",
+                        url = request.url,
+                        elapsedMs = SystemClock.elapsedRealtime() - started,
+                        detail = "requests=${session.requestCount.get()} skipped=${session.skippedCount.get()}",
+                    )
+                }
             }
         }
 
@@ -250,7 +261,7 @@ class WebViewScrapeEngine(
             mediaPlaybackRequiresUserGesture = request.kind == ScrapeKind.STREAM
             useWideViewPort = true
             loadWithOverviewMode = true
-            cacheMode = WebSettings.LOAD_DEFAULT
+            cacheMode = if (request.forceRefresh) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
             userAgentString = USER_AGENT
             setGeolocationEnabled(false)
             allowFileAccess = false
@@ -277,7 +288,7 @@ class WebViewScrapeEngine(
         if (session.request.kind == ScrapeKind.STREAM) return // installed at document start in all frames
         if (!session.injected.compareAndSet(false, true)) return
         val script = try {
-            scripts.script(session.request, session.requestId)
+            session.preparedScript
         } catch (t: Throwable) {
             session.fail(t)
             return
@@ -301,15 +312,17 @@ class WebViewScrapeEngine(
         val webView = session.webView
         session.webView = null
         if (webView == null) return
-        runCatching { webView.stopLoading() }
-        runCatching { webView.removeJavascriptInterface(ScrapeSchemas.BRIDGE_NAME) }
-        runCatching { webView.webChromeClient = null }
-        runCatching { webView.webViewClient = WebViewClient() }
-        runCatching { webView.loadUrl("about:blank") }
-        runCatching { webView.clearHistory() }
-        runCatching { webView.removeAllViews() }
-        runCatching { webView.destroy() }
-        Log.d(TAG, "WebView destroyed id=${session.requestId.take(8)}")
+        val cleaned = runCatching {
+            session.documentScript?.remove()
+            webView.stopLoading()
+            webView.removeJavascriptInterface(ScrapeSchemas.BRIDGE_NAME)
+            webView.webChromeClient = null
+            webView.webViewClient = WebViewClient()
+            webView.loadUrl("about:blank")
+            webView.clearHistory()
+        }.isSuccess
+        if (closed || !session.reusable || !cleaned) runCatching { webView.destroy() }
+        else pooledWebView = webView
     }
 
     // --------------------------------------------------------------- session
@@ -318,7 +331,12 @@ class WebViewScrapeEngine(
         val requestId: String,
         val request: ScrapeRequest,
         val deferred: CompletableDeferred<JSONObject>,
+        val preparedScript: String,
     ) {
+        var documentScript: ScriptHandler? = null
+        var reusable = true
+        val requestCount = AtomicInteger()
+        val skippedCount = AtomicInteger()
         val handler = Handler(Looper.getMainLooper())
         val delivered = AtomicBoolean(false)
         val injected = AtomicBoolean(false)
@@ -331,21 +349,27 @@ class WebViewScrapeEngine(
             if (deferred.isActive) deferred.completeExceptionally(error)
         }
 
+        val trustedPlayerPages = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
         val observedMedia = ConcurrentHashMap<String, String>()
 
         val client = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, resource: WebResourceRequest): WebResourceResponse? {
+                requestCount.incrementAndGet()
+                if (ScrapeResourcePolicy.skip(resource.url.toString())) {
+                    skippedCount.incrementAndGet()
+                    return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
+                }
                 if (request.kind == ScrapeKind.STREAM) {
                     val target = resource.url.toString()
                     if (resource.url.path == "/api.php") ScrapeLogger.stage(requestId, request.kind,
                         "API_RESPONSE", target, detail = "browser request method=${resource.method}")
                     val parent = resource.requestHeaders.entries
                         .firstOrNull { it.key.equals("Referer", true) }?.value
-                    val provider = request.streamProviderUrl ?: request.url
                     if (PlayerMetadata.mime(target) != null && parent != null &&
-                        runCatching { java.net.URI(parent).host == java.net.URI(provider).host }.getOrDefault(false)) {
+                        parent in trustedPlayerPages) {
                         observedMedia[target] = parent
-                        ScrapeLogger.stage(requestId, request.kind, "STREAM_METADATA", target,
+                        ScrapeLogger.stage(requestId, request.kind, "MEDIA_METADATA", target,
                             detail = "network candidate; validation pending")
                     }
                 }
@@ -462,6 +486,7 @@ class WebViewScrapeEngine(
                 view: WebView,
                 detail: RenderProcessGoneDetail,
             ): Boolean {
+                reusable = false
                 fail(
                     WebViewUnavailableException(
                         "The Android WebView renderer crashed while scraping. Try again."
@@ -477,7 +502,7 @@ class WebViewScrapeEngine(
                     requestId = requestId,
                     kind = request.kind,
                     stage = "js_console",
-                    detail = "${message.messageLevel()} ${message.message()}",
+                    detail = "${message.messageLevel()} (provider message omitted)",
                 )
                 return true
             }
@@ -522,6 +547,12 @@ class WebViewScrapeEngine(
                     ParseException("The extraction script returned malformed JSON.", t)
                 )
             }
+        }
+
+        @JavascriptInterface
+        fun playerPage(id: String?, url: String?) {
+            if (id != session.requestId || url == null) return
+            PlayerMetadata.absolute(url, session.request.url)?.let { session.trustedPlayerPages.add(it) }
         }
 
         @JavascriptInterface

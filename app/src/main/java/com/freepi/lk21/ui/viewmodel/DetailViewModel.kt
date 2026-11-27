@@ -35,14 +35,18 @@ class DetailViewModel(
         load()
     }
 
+    private var loadJob: kotlinx.coroutines.Job? = null
+
     fun load(forceRefresh: Boolean = false) {
+        loadJob?.cancel()
         _state.value = _state.value.copy(loading = _state.value.detail == null, error = null)
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             try {
                 val detail = repository.detail(slug, forceRefresh)
                 val progress = repository.getProgress(detail.slug)
                 _state.value = DetailUiState(loading = false, detail = detail, progress = progress)
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 _state.value = _state.value.copy(loading = false, error = t.userMessage())
             }
         }

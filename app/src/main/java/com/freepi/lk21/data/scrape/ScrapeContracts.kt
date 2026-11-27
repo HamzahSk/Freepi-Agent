@@ -34,9 +34,11 @@ data class ScrapeRequest(
     val timeoutMs: Long = 35_000L,
     /** Number of *additional* attempts for transient failures. */
     val retries: Int = 1,
+    val forceRefresh: Boolean = false,
     val extraHeaders: Map<String, String> = emptyMap(),
     /** STREAM only: load the real parent document, preserving iframe/CSP restrictions. */
     val embeddingPageUrl: String? = null,
+    val streamMaxDepth: Int = 6,
     val streamProviderUrl: String? = null,
 )
 

@@ -1,31 +1,40 @@
-// Observational diagnostics only. Never clicks overlays or modifies provider code.
+// Observational live diagnostics. Stops on access restrictions; no clicks or provider-code changes.
+// URLs contain no query, slug, credentials, response bodies, cookies or tokens in the saved report.
 import { chromium } from 'playwright';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 const url = process.argv[2];
-if (!url) throw new Error('Usage: node lk21-live.mjs <actual catalog episode/movie URL>');
+if (!url) throw new Error('Usage: node lk21-live.mjs <catalog URL or accessible initialization-script URL>');
+const safe = raw => { try { const u=new URL(raw); return u.origin+'/[redacted]'; } catch { return '[redacted]'; } };
 const out = new URL('./out/lk21-live/', import.meta.url);
-mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
-const page = await browser.newPage();
-const started = Date.now(), events = [], bodies = [];
-page.on('request', r => events.push({ms: Date.now()-started, event:'request', method:r.method(), url:r.url(), type:r.resourceType(), body:r.url().endsWith('/api.php') ? r.postData() : undefined}));
-page.on('response', r => {
-  events.push({ms:Date.now()-started,event:'response',url:r.url(),status:r.status(),type:r.headers()['content-type']});
-  if (/api\.php|abyssplayer\.com|\/player-v2\//.test(r.url())) bodies.push((async()=>{
-    try { const body=await r.text(); writeFileSync(new URL(`response-${bodies.length}-${new URL(r.url()).hostname}.txt`,out), body); } catch {}
+mkdirSync(out,{recursive:true});
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+const page=await browser.newPage(), start=Date.now(), events=[], pending=[];
+page.on('request',r=>events.push({ms:Date.now()-start,event:'request',url:safe(r.url()),method:r.method(),type:r.resourceType()}));
+page.on('response',r=>{
+  events.push({ms:Date.now()-start,event:'response',url:safe(r.url()),status:r.status(),type:r.headers()['content-type']});
+  if(new URL(r.url()).pathname.endsWith('/init_player.js'))pending.push((async()=>{
+    try {
+      const body=await r.body();
+      const fixture=readFileSync(new URL('../../app/src/test/resources/lk21/player/playcdn-init-2026-11-27.js',import.meta.url));
+      events.push({event:'initialization-script',status:r.status(),bytes:body.length,sha256:createHash('sha256').update(body).digest('hex'),matchesFixture:body.equals(fixture)});
+    }catch{}
   })());
 });
-page.on('pageerror', e=>events.push({ms:Date.now()-started,event:'error',message:e.message}));
 try {
-  await page.goto(url, {waitUntil:'domcontentloaded',timeout:30000});
-  await page.waitForTimeout(15000);
-  for (const frame of page.frames()) {
-    try { events.push({event:'snapshot-before-interaction', url:frame.url(), data:await frame.evaluate(()=>({title:document.title, video:[...document.querySelectorAll('video')].map(v=>({src:v.currentSrc,readyState:v.readyState})), overlays:[...document.querySelectorAll('#overlay,#uyeouyeo')].map(e=>({id:e.id,tag:e.tagName,href:e.getAttribute('href'),click:String(e.onclick).slice(0,200)})),playlist: typeof window.jwplayer==='function' ? window.jwplayer().getPlaylist?.() : null}))}); } catch(e) { events.push({event:'snapshot-error',url:frame.url(),message:e.message}); }
+  await page.goto(url,{waitUntil:'domcontentloaded',timeout:25000});
+  const restricted=await page.evaluate(()=>/just a moment|attention required|verify you are human/i.test(document.title)||!!document.querySelector('#challenge-form'));
+  if(restricted)events.push({event:'access-restricted',action:'stopped'});
+  else {
+    if(!new URL(url).pathname.endsWith('.js'))await page.waitForTimeout(10000);
+    for(const frame of page.frames()){
+      try { events.push({event:'snapshot',url:safe(frame.url()),data:await frame.evaluate(()=>({title:document.title,videoElements:document.querySelectorAll('video').length,playlistItems:typeof jwplayer==='function'?(jwplayer().getPlaylist?.()||[]).length:0,customPlayButton:!!document.querySelector('.custom-play-btn')}))}); }catch{}
+    }
   }
-  events.push({event:'interaction-skipped',reason:'Captured popup and provider overlays open advertising links; no ad clicks are authorized.'});
-} finally {
-  await Promise.allSettled(bodies);
-  writeFileSync(new URL('network.json',out),JSON.stringify(events,null,2));
-  console.log(JSON.stringify(events.filter(e=>e.event!=='request'&&e.event!=='response'||/api\.php|abyss|m3u8|\.mpd/.test(e.url)),null,2));
-  await browser.close();
+} catch(e) {events.push({event:'navigation-failed',type:e.name});}
+finally {
+  await Promise.allSettled(pending);
+  const report={elapsedMs:Date.now()-start,requests:events.filter(e=>e.event==='request').length,events};
+  writeFileSync(new URL('network.json',out),JSON.stringify(report,null,2));
+  console.log(JSON.stringify(report,null,2));await browser.close();
 }

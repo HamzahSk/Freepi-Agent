@@ -31,6 +31,7 @@ class BrowseViewModel(
 ) : ViewModel() {
 
     private var nextUrl: String? = null
+    private var pageJob: kotlinx.coroutines.Job? = null
     private var loadingJob: Boolean = false
 
     private val _state = MutableStateFlow(
@@ -51,16 +52,18 @@ class BrowseViewModel(
     }
 
     fun loadFirst(path: String, title: String) {
+        pageJob?.cancel()
         _state.value = _state.value.copy(
             path = path,
             title = title,
             loading = true,
+            loadingMore = false,
             error = null,
             empty = false,
             items = emptyList(),
         )
         nextUrl = null
-        viewModelScope.launch {
+        pageJob = viewModelScope.launch {
             try {
                 val page = repository.list(path)
                 nextUrl = page.nextPageUrl
@@ -73,6 +76,7 @@ class BrowseViewModel(
                     error = null,
                 )
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 _state.value = _state.value.copy(
                     loading = false,
                     error = t.userMessage(),
@@ -87,7 +91,7 @@ class BrowseViewModel(
         if (loadingJob || current.loadingMore) return
         loadingJob = true
         _state.value = current.copy(loadingMore = true)
-        viewModelScope.launch {
+        pageJob = viewModelScope.launch {
             try {
                 val page = repository.list(url)
                 nextUrl = page.nextPageUrl
@@ -99,6 +103,7 @@ class BrowseViewModel(
                     hasMore = page.hasMore,
                 )
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 _state.value = _state.value.copy(
                     loadingMore = false,
                     error = t.userMessage(),

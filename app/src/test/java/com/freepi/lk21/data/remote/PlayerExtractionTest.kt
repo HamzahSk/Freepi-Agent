@@ -54,7 +54,7 @@ class PlayerExtractionTest {
                     initial -> { assertEquals(catalog, parent); PlayerResponse(url, captured()) }
                     provider -> { assertEquals(initial, parent); PlayerResponse(url, "<script>var sources=[{file:'$master'}];</script>") }
                     master -> { assertTrue(media); assertEquals(provider, parent)
-                        PlayerResponse(url, "#EXTM3U\n#EXT-X-MEDIA:URI=\"sub/id.m3u8\",LANGUAGE=\"id\",TYPE=SUBTITLES,NAME=\"Indonesia\"\n", "application/vnd.apple.mpegurl") }
+                        PlayerResponse(url, "#EXTM3U\n#EXT-X-MEDIA:URI=\"sub/id.m3u8\",LANGUAGE=\"id\",TYPE=SUBTITLES,NAME=\"Indonesia\"\n#EXT-X-STREAM-INF:BANDWIDTH=1000\n480.m3u8\n", "application/vnd.apple.mpegurl") }
                     else -> error("Unexpected request $url")
                 }
             }, post = { req, parent -> assertEquals(initial, parent)
@@ -68,14 +68,14 @@ class PlayerExtractionTest {
         assertEquals("id", result.subtitles.single().language)
         assertEquals("https://cdn.example/sub/id.m3u8", result.subtitles.single().url)
         assertEquals(listOf(PlayerStage.INITIAL_PAGE, PlayerStage.API_RESPONSE, PlayerStage.EMBED_URL,
-            PlayerStage.PROVIDER_PAGE, PlayerStage.STREAM_METADATA), stages.distinct())
+            PlayerStage.PROVIDER_PAGE, PlayerStage.PLAYER_CONFIG, PlayerStage.MEDIA_METADATA, PlayerStage.VALIDATION), stages.distinct())
     }
 
     @Test fun browserMetadataIsCandidateUntilValidated() = runBlocking {
         val extensionless = "https://cdn.example/manifest?token=abc"
         val extraction = PlayerExtraction(
             get = { url, _, _ -> if (url == extensionless)
-                PlayerResponse(url, "<?xml version=\"1.0\"?><MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\"></MPD>", "application/dash+xml")
+                PlayerResponse(url, "<?xml version=\"1.0\"?><MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\"><Period><AdaptationSet><Representation/></AdaptationSet></Period></MPD>", "application/dash+xml")
                 else PlayerResponse(url, "<html><video></video></html>") },
             post = { _, _ -> error("no API") },
             browser = { _, _, _ -> JSONObject().put("pageUrl", initial).put("media", JSONArray()
@@ -87,7 +87,7 @@ class PlayerExtractionTest {
         val extraction = PlayerExtraction(get = { u, _, _ -> PlayerResponse(u, "<html></html>") },
             post = { _, _ -> error("no API") }, browser = { _, _, _ -> error("browser unavailable") })
         assertTrue(runCatching { extraction.resolve(initial, catalog) }.exceptionOrNull()!!.message!!
-            .startsWith("PLAYER_INITIALIZATION:"))
+            .startsWith("PLAYER_CONFIG:"))
     }
 
     @Test fun providerHtmlAndSegmentsNeverValidateAsMedia() {
@@ -117,7 +117,7 @@ class PlayerExtractionTest {
             post = { r, _ -> PlayerResponse(r.url, fixture("live-api.json")) },
             browser = { _, _, _ -> JSONObject() })
         val error = runCatching { extraction.resolve(initial, catalog) }.exceptionOrNull()!!
-        assertTrue(error.message!!, error.message!!.startsWith("STREAM_METADATA:"))
+        assertTrue(error.message!!, error.message!!.startsWith("MEDIA_METADATA:"))
     }
 
     @Test fun dashSubtitleBasesAndLanguageArePreserved() {

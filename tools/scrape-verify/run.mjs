@@ -77,7 +77,7 @@ async function extractOnFixture(browser, fixture, scriptName, requestId) {
 
 async function verifyFixtures() {
   mkdirSync(OUT, { recursive: true });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true });
   const tasks = [
     ['home.html', 'home', 'home-fixture'],
     ['list.html', 'list', 'list-fixture'],
@@ -98,7 +98,7 @@ async function verifyFixtures() {
 
 async function probeLive() {
   // No bypassing: record what the host actually answers to a real Chromium.
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true });
   const urls = [
     'https://tv13.lk21official.cc/',
     'https://tv13.lk21official.cc/page/2/',

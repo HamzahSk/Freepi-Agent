@@ -5,9 +5,7 @@ import com.freepi.lk21.data.MovieRepository
 import com.freepi.lk21.data.local.AppDatabase
 import com.freepi.lk21.data.remote.Lk21Client
 import com.freepi.lk21.data.remote.Lk21Parser
-import com.freepi.lk21.data.remote.StreamResolver
 import com.freepi.lk21.data.scrape.CatalogDataSource
-import com.freepi.lk21.data.scrape.CompositeStreamProvider
 import com.freepi.lk21.data.scrape.HttpCatalogDataSource
 import com.freepi.lk21.data.scrape.StreamProvider
 import com.freepi.lk21.data.scrape.WebViewCatalogDataSource
@@ -21,15 +19,18 @@ import java.io.File
 /**
  * Manual dependency container (small app, no DI framework required).
  *
- * Data flow: live site -> hidden WebView -> injected JavaScript -> validated
- * JSON -> repositories -> native Compose UI. The HTTP client still serves the
- * stream fallback, HLS subtitle manifests and the WebView-less catalog fallback.
+ * Catalog HTML uses the HTTP parser first, with browser execution for unsupported
+ * dynamic layouts. Streams share one HTTP/browser extraction pipeline. Native
+ * Compose, Media3 and Room remain the UI, playback and persistence layers.
  */
 class AppContainer(application: Application) {
 
     private val cacheDir = File(application.cacheDir, "lk21").apply { mkdirs() }
 
-    val client: Lk21Client by lazy { Lk21Client(cacheDir) }
+    val client: Lk21Client by lazy { Lk21Client(cacheDir,
+        browserCookies = { android.webkit.CookieManager.getInstance().getCookie(it) },
+        receiveBrowserCookie = { url, cookie -> android.webkit.CookieManager.getInstance().setCookie(url, cookie) },
+    ) }
     val parser: Lk21Parser by lazy { Lk21Parser() }
 
     /** Centralised hidden-WebView scraping engine (all screens share one). */
@@ -43,17 +44,14 @@ class AppContainer(application: Application) {
     }
 
     val streamProvider: StreamProvider by lazy {
-        CompositeStreamProvider(
-            primary = WebViewStreamResolver(scrapeEngine, client),
-            fallback = StreamResolver(client),
-        )
+        WebViewStreamResolver(scrapeEngine, client)
     }
 
     val database: AppDatabase by lazy { AppDatabase.get(application) }
     val repository: MovieRepository by lazy {
         MovieRepository(
-            catalog = webCatalog,
-            fallbackCatalog = httpCatalog,
+            catalog = httpCatalog,
+            fallbackCatalog = webCatalog,
             streamProvider = streamProvider,
             client = client,
             database = database,

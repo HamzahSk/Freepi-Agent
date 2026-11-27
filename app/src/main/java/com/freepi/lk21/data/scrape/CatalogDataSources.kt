@@ -6,12 +6,14 @@ import com.freepi.lk21.data.model.MovieDetail
 import com.freepi.lk21.data.remote.Lk21Client
 import com.freepi.lk21.data.remote.Lk21Parser
 import com.freepi.lk21.data.remote.ParseException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.net.URL
 import java.net.URLEncoder
 
 /**
  * [CatalogDataSource] backed by the hidden WebView scraping engine.
- * This is the primary data path for Home / Browse / Search / Details.
+ * Used when HTTP succeeds but the catalog layout needs browser execution.
  */
 class WebViewCatalogDataSource(
     private val engine: WebViewScrapeEngine,
@@ -26,12 +28,13 @@ class WebViewCatalogDataSource(
                 kind = ScrapeKind.HOME,
                 url = url,
                 timeoutMs = 40_000,
-                retries = 1,
+                retries = 0,
+                forceRefresh = forceRefresh,
             )
         )
         client.noteWorkingBase(envelope.source.finalUrl)
         val data = ScrapeValidator.requireHome(envelope)
-        return mapper.home(data)
+        return withContext(Dispatchers.Default) { mapper.home(data) }
     }
 
     override suspend fun list(pathOrUrl: String, forceRefresh: Boolean): ListPage {
@@ -42,12 +45,13 @@ class WebViewCatalogDataSource(
                 kind = ScrapeKind.LIST,
                 url = url,
                 timeoutMs = 35_000,
-                retries = 1,
+                retries = 0,
+                forceRefresh = forceRefresh,
             )
         )
         client.noteWorkingBase(envelope.source.finalUrl)
         val data = ScrapeValidator.requireList(envelope, isSearch = isSearch)
-        return mapper.list(data, envelope.source.finalUrl.ifBlank { url })
+        return withContext(Dispatchers.Default) { mapper.list(data, envelope.source.finalUrl.ifBlank { url }) }
     }
 
     override suspend fun search(query: String, forceRefresh: Boolean): ListPage {
@@ -68,16 +72,17 @@ class WebViewCatalogDataSource(
                         kind = ScrapeKind.LIST,
                         url = url,
                         timeoutMs = 35_000,
-                        retries = 1,
+                        retries = 0,
+                        forceRefresh = forceRefresh,
                     )
                 )
                 client.noteWorkingBase(envelope.source.finalUrl)
                 val data = ScrapeValidator.requireList(envelope, isSearch = true)
-                val page = mapper.list(data, envelope.source.finalUrl.ifBlank { url })
-                if (page.items.isNotEmpty() || page.page > 1) return page
+                val page = withContext(Dispatchers.Default) { mapper.list(data, envelope.source.finalUrl.ifBlank { url }) }
+                if (page.items.isNotEmpty() || page.page > 1 || data.optBoolean("emptyHint")) return page
                 lastError = ParseException("The search returned no results.")
             } catch (t: Throwable) {
-                if (t is kotlinx.coroutines.CancellationException) throw t
+                if (t is kotlinx.coroutines.CancellationException || t is com.freepi.lk21.data.remote.AccessBlockedException) throw t
                 lastError = t
             }
         }
@@ -90,13 +95,14 @@ class WebViewCatalogDataSource(
         var lastData: org.json.JSONObject? = null
         var finalUrl = url
 
-        repeat(3) {
+        for (hop in 0 until 3) {
             val envelope = engine.scrape(
                 ScrapeRequest(
                     kind = ScrapeKind.DETAIL,
                     url = current,
                     timeoutMs = 40_000,
-                    retries = 1,
+                    retries = 0,
+                    forceRefresh = forceRefresh,
                 )
             )
             client.noteWorkingBase(envelope.source.finalUrl)
@@ -111,14 +117,14 @@ class WebViewCatalogDataSource(
                 lastData = null
             } else {
                 lastData = data
-                return@repeat
+                break
             }
         }
 
         val data = lastData ?: throw ParseException(
             "The series page redirected too many times; the episode list could not be read."
         )
-        return mapper.detail(data, finalUrl)
+        return withContext(Dispatchers.Default) { mapper.detail(data, finalUrl) }
     }
 
     private fun mapperAbsolutize(value: String, base: String): String? = runCatching {
@@ -132,9 +138,17 @@ class HttpCatalogDataSource(
     private val parser: Lk21Parser = Lk21Parser(),
 ) : CatalogDataSource {
 
+    private suspend fun <T> parse(kind: ScrapeKind, url: String, block: () -> T): T =
+        withContext(Dispatchers.Default) {
+            val started = System.nanoTime()
+            try { block() }
+            finally { ScrapeLogger.stage("catalog", kind, "parse", url,
+                elapsedMs = (System.nanoTime() - started) / 1_000_000) }
+        }
+
     override suspend fun home(forceRefresh: Boolean): HomeData {
         val doc = client.fetchDocument("/", forceRefresh, ttlMillis = 10 * 60_000L)
-        val home = parser.parseHome(doc)
+        val home = parse(ScrapeKind.HOME, doc.baseUri()) { parser.parseHome(doc) }
         if (home.latest.isEmpty() && home.popular.isEmpty() && home.recommended.isEmpty()) {
             throw ParseException("The source returned a page without recognizable movie cards.")
         }
@@ -144,7 +158,10 @@ class HttpCatalogDataSource(
     override suspend fun list(pathOrUrl: String, forceRefresh: Boolean): ListPage {
         val doc = client.fetchDocument(pathOrUrl, forceRefresh, ttlMillis = 5 * 60_000L)
         val page = Regex("""/page/(\d+)""").find(doc.baseUri())?.groupValues?.get(1)?.toIntOrNull() ?: 1
-        return parser.parseList(doc, page)
+        val result = parse(ScrapeKind.LIST, doc.baseUri()) { parser.parseList(doc, page) }
+        if (result.items.isEmpty() && doc.selectFirst("main, #content, .content, .no-results, .not-found") == null)
+            throw ParseException("The catalog layout was not recognized")
+        return result
     }
 
     override suspend fun search(query: String, forceRefresh: Boolean): ListPage {
@@ -154,9 +171,18 @@ class HttpCatalogDataSource(
 
     override suspend fun detail(slugOrUrl: String, forceRefresh: Boolean): MovieDetail {
         val url = if (slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/$slugOrUrl/")
-        val doc = client.fetchDocument(url, forceRefresh, ttlMillis = 15 * 60_000L)
-        val detail = parser.parseDetail(doc, client.absolute(url))
-        if (detail.title.isBlank()) {
+        var doc = client.fetchDocument(url, forceRefresh, ttlMillis = 15 * 60_000L)
+        val visited = hashSetOf(doc.baseUri())
+        for (hop in 0 until 3) {
+            val redirect = doc.selectFirst("a#openNow[href]")?.absUrl("href")
+                ?.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: break
+            if (!visited.add(redirect)) throw ParseException("Circular episode redirect")
+            doc = client.fetchDocument(redirect, forceRefresh, ttlMillis = 15 * 60_000L)
+        }
+        if (doc.selectFirst("a#openNow[href]") != null) throw ParseException("Too many episode redirects")
+        val detail = parse(ScrapeKind.DETAIL, doc.baseUri()) { parser.parseDetail(doc, doc.baseUri()) }
+        if (detail.title.isBlank() || detail.title == "Untitled" ||
+            doc.selectFirst("h1, .post-header h2, script#watch-history-data, script[type=application/ld+json]") == null) {
             throw ParseException("Could not read the movie details. The source layout may have changed.")
         }
         return detail

@@ -21,7 +21,7 @@ object ScrapeLogger {
         elapsedMs: Long? = null,
         detail: String? = null,
     ) {
-        Log.d(TAG, build("stage", requestId, kind, stage, url, elapsedMs, detail))
+        runCatching { Log.d(TAG, build("stage", requestId, kind, stage, url, elapsedMs, detail)) }
     }
 
     fun failure(
@@ -32,24 +32,22 @@ object ScrapeLogger {
         url: String? = null,
         elapsedMs: Long? = null,
     ) {
-        Log.e(
-            TAG,
-            build(
-                "failure",
-                requestId,
-                kind,
-                stage,
-                url,
-                elapsedMs,
-                "${error.javaClass.simpleName}: ${error.message}",
-            ),
-            error,
-        )
+        runCatching { Log.e(TAG, build("failure", requestId, kind, stage, url, elapsedMs,
+            error.javaClass.simpleName)) }
     }
 
     fun warn(requestId: String, kind: ScrapeKind, stage: String, detail: String, url: String? = null) {
-        Log.w(TAG, build("warning", requestId, kind, stage, url, null, detail))
+        runCatching { Log.w(TAG, build("warning", requestId, kind, stage, url, null, detail)) }
     }
+
+    internal fun safeUrl(raw: String): String = runCatching {
+        val uri = java.net.URI(raw)
+        // Player slugs and path components can carry signed credentials too.
+        "${uri.scheme}://${uri.host}/[redacted]"
+    }.getOrDefault("[redacted]")
+
+    private fun sanitize(value: String): String =
+        value.replace(Regex("https?://[^\\s]+")) { safeUrl(it.value) }
 
     private fun build(
         level: String,
@@ -64,8 +62,8 @@ object ScrapeLogger {
         append(" id=").append(requestId.take(8))
         append(" kind=").append(kind.name.lowercase())
         append(" stage=").append(stage)
-        if (url != null) append(" url=").append(url.take(180))
+        if (url != null) append(" url=").append(safeUrl(url))
         if (elapsedMs != null) append(" elapsedMs=").append(elapsedMs)
-        if (!detail.isNullOrBlank()) append(" detail=").append(detail.take(300).replace('\n', ' '))
+        if (!detail.isNullOrBlank()) append(" detail=").append(sanitize(detail).take(300).replace('\n', ' '))
     }
 }

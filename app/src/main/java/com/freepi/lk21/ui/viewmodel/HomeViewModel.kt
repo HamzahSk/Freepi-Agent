@@ -33,18 +33,22 @@ class HomeViewModel(private val repository: MovieRepository) : ViewModel() {
         load()
     }
 
+    private var loadJob: kotlinx.coroutines.Job? = null
+
     fun load(forceRefresh: Boolean = false) {
+        loadJob?.cancel()
         val current = _state.value
         _state.value = current.copy(
             loading = current.data == null,
             refreshing = current.data != null,
             error = null,
         )
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             try {
                 val data = repository.home(forceRefresh)
                 _state.value = HomeUiState(loading = false, refreshing = false, data = data)
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 _state.value = _state.value.copy(
                     loading = false,
                     refreshing = false,

@@ -28,11 +28,14 @@ class SearchViewModel(private val repository: MovieRepository) : ViewModel() {
     val state: StateFlow<SearchUiState> = _state.asStateFlow()
 
     private var debounceJob: Job? = null
+    private var moreJob: Job? = null
     private var nextUrl: String? = null
 
     fun onQueryChange(query: String) {
         _state.value = _state.value.copy(query = query)
         debounceJob?.cancel()
+        moreJob?.cancel()
+        _state.value = _state.value.copy(loadingMore = false)
         if (query.trim().length < 2) {
             nextUrl = null
             _state.value = _state.value.copy(
@@ -53,12 +56,13 @@ class SearchViewModel(private val repository: MovieRepository) : ViewModel() {
         val query = _state.value.query
         if (query.trim().length >= 2) {
             debounceJob?.cancel()
-            viewModelScope.launch { runSearch(query) }
+            moreJob?.cancel()
+            debounceJob = viewModelScope.launch { runSearch(query) }
         }
     }
 
     private suspend fun runSearch(query: String) {
-        _state.value = _state.value.copy(loading = true, error = null, searched = true)
+        _state.value = _state.value.copy(loading = true, loadingMore = false, error = null, searched = true)
         nextUrl = null
         try {
             val page = repository.search(query)
@@ -69,6 +73,7 @@ class SearchViewModel(private val repository: MovieRepository) : ViewModel() {
                 hasMore = page.hasMore,
             )
         } catch (t: Throwable) {
+            if (t is kotlinx.coroutines.CancellationException) throw t
             _state.value = _state.value.copy(loading = false, error = t.userMessage())
         }
     }
@@ -77,7 +82,7 @@ class SearchViewModel(private val repository: MovieRepository) : ViewModel() {
         val url = nextUrl ?: return
         if (_state.value.loading || _state.value.loadingMore) return
         _state.value = _state.value.copy(loadingMore = true)
-        viewModelScope.launch {
+        moreJob = viewModelScope.launch {
             try {
                 val page = repository.list(url)
                 nextUrl = page.nextPageUrl
@@ -87,6 +92,7 @@ class SearchViewModel(private val repository: MovieRepository) : ViewModel() {
                     hasMore = page.hasMore,
                 )
             } catch (t: Throwable) {
+            if (t is kotlinx.coroutines.CancellationException) throw t
                 _state.value = _state.value.copy(
                     loadingMore = false,
                     error = t.userMessage(),
