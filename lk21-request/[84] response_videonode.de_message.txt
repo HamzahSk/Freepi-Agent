@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <title>LK21 - Popup Player Video</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <style>.embed-container,a#uyeouyeo{top:0;left:0;position:absolute}.embed-container,a#uyeouyeo,body,html{width:100%;height:100%}body,html{margin:0;padding:0;overflow:hidden;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#000}.embed-container{z-index:2}.embed-container iframe{width:100%;height:100%;border:none}a#uyeouyeo{text-decoration:none;z-index:999;cursor:pointer;opacity:0;visibility:hidden;transition:opacity .3s,visibility .3s}a#uyeouyeo.visible{opacity:1;visibility:visible}.message-box{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);-ms-transform:translate(-50%,-50%);width:80%;max-width:450px;padding:20px;text-align:center;color:#e0e0e0;background:rgba(43,43,43,.95);border-radius:8px;box-shadow:0 4px 15px rgba(0,0,0,.5);transition:opacity .3s,transform .3s;backdrop-filter:blur(5px);z-index:1000}a#uyeouyeo .message-box{transform:translate(-50%,-50%) scale(.95)}a#uyeouyeo.visible .message-box{transform:translate(-50%,-50%) scale(1)}.message-box p{margin:8px 0;line-height:1.6}.message-box .warning{color:#ff0;font-weight:700;margin-top:20px;display:block;font-size:12px}.spinner-overlay{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1}.spinner{width:50px;height:50px;border:5px solid rgba(255,255,255,.2);border-top-color:#fff;-webkit-border-radius:50%;-moz-border-radius:50%;border-radius:50%;position:absolute;top:50%;left:50%;margin-top:-30px;margin-left:-30px;-webkit-animation:1s linear infinite muter;-moz-animation:1s linear infinite muter;animation:1s linear infinite muter}@-webkit-keyframes muter{to{-webkit-transform:rotate(360deg)}}@-moz-keyframes muter{to{-moz-transform:rotate(360deg)}}@keyframes muter{to{transform:rotate(360deg)}}</style>
+    <script>
+        if (window.self === window.top) {
+            window.location.replace('https://lk21.de');
+        }
+
+        function devtoolIsOpening() {
+            console.clear();
+            var before = new Date().getTime();
+            debugger;
+            var after = new Date().getTime();
+            if (after - before > 200) {
+                document.write("Dont open Developer Tools.");
+                window.location.replace("https://www.google.com");
+            }
+            setTimeout(devtoolIsOpening, 100);
+        }
+        devtoolIsOpening();
+
+        document.addEventListener("DOMContentLoaded", function() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api.php", true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            var response = JSON.parse(xhr.responseText);
+                            if (response.embedUrl) {
+                                var iframe = document.getElementById("video-iframe");
+                                if (iframe) {
+                                    iframe.src = response.embedUrl;
+                                }
+                            }
+                        } catch (e) {
+                            console.error("Invalid JSON response");
+                        }
+                    }
+                }
+            };
+            var host = "hydrax";
+            var id = "a9rCpj6LGAx-CefoBJ7rkg";
+            xhr.send("host=" + host + "&id=" + id);
+        });
+    </script>
+</head>
+
+<body>
+    <a id="uyeouyeo" href="https://yellowishgather.com/b.3oVS0/Pn3Jpsv/bEmhV/JEZ/Du0a0LNQz/A/4INyjRQc5sLDTkQv3GMNDHgA2/NoTKAK" target="_blank" rel="noopener nofollow">
+        <div class="message-box">
+            <p><strong>Klik Di Mana Saja untuk Memulai Film</strong></p>
+            <p style="font-size: 14px; opacity: 0.7;">
+                <em>"Terima kasih sudah mengklik ku 1 kali, untuk menampilkan iklan dan <strong>Play Movie</strong>, mudah rezeki dan sehat terus buat kamu. Aamiin"</em>
+            </p>
+            <span class="warning">THIS PLAYER CONTAINS ADS</span>
+        </div>
+    </a>
+
+    <div class="embed-container">
+        <iframe id="video-iframe" src="" scrolling="no" frameborder="0" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" allow="screen-wake-lock; autoplay; fullscreen; picture-in-picture"></iframe>
+    </div>
+    <div class="spinner-overlay" id="loading-spinner">
+        <div class="spinner"></div>
+    </div>
+    <script src="/script.min.js?v4"></script>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a614b14bff4c5b4c',t:'MTc5NTgxOTgzNA=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a614b14bff4c5b4c',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+
+</html>

@@ -1,0 +1,4 @@
+HTTP/2 200
+content-type: text/html
+
+<!DOCTYPE html><html><head><script src="https://playcdn.de/js/init_player.js?t=1.5.5"></script></head><body><div id="overlay"></div><script>var player = {}; </script></body></html>

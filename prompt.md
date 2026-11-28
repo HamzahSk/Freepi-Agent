@@ -1,317 +1,62 @@
-Task: Deep Scraping Debugging & Browser-Based Reverse Engineering — LK21 and MovieBox
+# Task: Upgrade Android UI/UX (`rofil.movie.app`) & Create Comprehensive `README.md` Documentation
 
-Work across both repositories:
+Work across both repositories in the runner environment:
+- **Main Android repository (`rofil.movie.app`)**: `$GITHUB_WORKSPACE`
+- **Public source/extractor repository (`movie-source`)**: `$MOVIE_SOURCE_DIR` (`https://github.com/HamzahSk/movie-source.git`, branch `main`)
 
-- Main Android repository: "$GITHUB_WORKSPACE"
-- Source repository: "$MOVIE_SOURCE_DIR" ("HamzahSk/movie-source", branch "main")
+Preserve the fully remote, source-agnostic architecture: all scraping and extraction intelligence remains in `movie-source`, while `rofil.movie.app` remains a generic, dynamically synced presentation and playback client. Do not hardcode source-specific logic in the Android app.
 
-The existing LK21 and MovieBox scrapers still have functional bugs. Perform a thorough investigation and fix the actual scraping implementations, not just their symptoms.
+---
 
-IMPORTANT: Start by simulating the websites using a real Chromium browser. Do not rely solely on reading existing source code.
+## 1. Upgrade UI/UX in `rofil.movie.app` (`$GITHUB_WORKSPACE`)
 
-1. Browser-Based Investigation (Mandatory First Step)
+Inspect the current Jetpack Compose screens, theme, components, navigation, and viewmodels, then apply a cohesive UI/UX upgrade:
 
-Use Playwright or another available Chromium browser automation tool.
+### A. Visual Polish (Replace Flat Appearance)
+- Move away from flat, plain dark surfaces by adding subtle tonal elevation, soft gradient scrims over hero/poster artwork, refined hairline borders, layered cards/containers, improved spacing, and clearer typographic hierarchy.
+- Clean up raw/empty metadata badges (for example, avoid rendering raw `NULL` tags when quality/rating metadata is missing or null).
+- Keep Search easily accessible from the top app bar / discovery header even after updating the bottom navigation.
 
-Visit the actual LK21 and MovieBox websites and study how they work.
+### B. Bottom Navigation: `Home`, `Favorite`, `Setting`
+- Update the bottom navigation bar to three destinations:
+  1. **Home** — dynamic catalog/discovery feed synced from the active remote source (`movie-source`).
+  2. **Favorite** — saved/favorite items (integrated cleanly with existing Room persistence/library/history without breaking source switching).
+  3. **Setting** — app settings & source management (viewing/switching remote sources, syncing/refreshing `manifest.json` & cached JS modules, cache clearing, playback preferences, and runtime/diagnostics status).
+- Ensure smooth tab switching, proper back-stack behavior, and seamless synchronization when switching active sources.
 
-For each website:
+### C. Detail Screen: YouTube-Style Inline Video Player + Hideable/Collapsible Info
+- Redesign the **Detail screen** so the **video player sits at the top of the screen like YouTube**, starting/resolving playback inline upon entering detail (or selecting an episode/provider) rather than showing only a static poster with a separate Play button.
+- Support switching providers/servers and episodes directly on the detail screen and updating the inline player smoothly.
+- Keep the **details/info section** (title, metadata chips, synopsis, provider selector, episodes, credits, recommendations) below the player **with a clear toggle/collapse button to hide or show the info** so users can either watch cleanly or inspect details on demand.
+- Preserve fullscreen player mode, resume position, loading states, and retryable error states.
 
-- Inspect the homepage visually.
-- Understand the actual page structure and navigation.
-- Interact with search fields, buttons, filters, pagination, and content cards.
-- Open several movie and series detail pages.
-- Observe how the website loads its content.
-- Inspect browser DevTools network requests and responses.
-- Identify the actual APIs, endpoints, parameters, headers, and response formats.
-- Compare browser behavior with the current scraper implementation.
+---
 
-Do not simply inspect HTML or copy endpoint names from existing code.
+## 2. Create `README.md` Documentation
 
-Study the website as an actual user would, including its visual layout, loading behavior, dynamic content, and interactions.
+Create clean, accurate, well-structured `README.md` files based on the actual codebase (no placeholders or fabricated features):
 
-Save useful request/response fixtures and screenshots when appropriate.
+1. **`$GITHUB_WORKSPACE/README.md` (`rofil.movie.app`)**:
+   - Project overview & architecture (source-agnostic Jetpack Compose + Media3 ExoPlayer + Room + remote JS runtime).
+   - Key features (dynamic remote source discovery & caching, `Home / Favorite / Setting` navigation, YouTube-style inline detail player with hideable info, stage diagnostics).
+   - Project structure overview & how to build/test (`./gradlew testDebugUnitTest`, `./gradlew assembleDebug`).
+   - How `rofil.movie.app` connects to `HamzahSk/movie-source` (`manifest.json` sync & caching flow).
 
-2. Fix LK21 Search
+2. **`$MOVIE_SOURCE_DIR/README.md` (`HamzahSk/movie-source`)**:
+   - Repository purpose & architecture (`src/<source>/`, `extractor/<extractor>/`, `manifest.json`, `tools/`).
+   - Generic source execution contract (`home`, `search`, `detail`, `episodes`, `stream`, etc.) and normalized response schema.
+   - Currently registered sources & extractors (`lk21`, `moviebox`, `p2p`, `hydrax`, etc.).
+   - Step-by-step guide on how to add a new source or stream extractor without modifying the Android app, plus how to run verification scripts in `tools/`.
 
-The LK21 search feature is currently broken: search results are missing, incorrect, or do not match the requested query.
+---
 
-Investigate the actual website search behavior using Chromium.
+## 3. Verification & Deliverables
 
-Specifically:
-
-- Identify the correct search URL and request method.
-- Inspect how search terms are encoded and submitted.
-- Identify required query parameters and headers.
-- Understand pagination and any filters.
-- Inspect the actual response and HTML structure.
-- Determine how movie titles, IDs, posters, and detail URLs are extracted.
-
-Rewrite the scraper logic where necessary.
-
-Expected result: Searching for a movie must return the same relevant results as the actual LK21 website, with correct titles, posters, URLs, and metadata.
-
-Do not return homepage content as search results or use hardcoded sample data.
-
-3. Fix LK21 Hydrax Stream Parser
-
-The Hydrax stream parser is still failing.
-
-Investigate the complete flow using the real "/lk21-request/" fixtures and fresh browser/network inspection.
-
-- Follow the LK21 stream request until the video node PHP response.
-- Inspect the actual Hydrax response, including "embedUrl".
-- Open and study the corresponding embed page in Chromium.
-- Inspect publicly accessible player structures and network responses.
-- Identify where the current parser fails.
-- Correct URL normalization, response parsing, metadata extraction, and error handling.
-- Add fixtures based on verified responses.
-
-Keep the existing architecture:
-
-- "src/lk21/stream.js" handles LK21 requests only up to video node PHP.
-- "extractor/p2p/" retains its existing working functionality.
-- "extractor/hydrax/" handles Hydrax parsing separately.
-
-Do not mix P2P and Hydrax parsing back into "stream.js".
-
-Do not implement ad bypasses, authentication bypasses, or DRM circumvention. If a provider requires user interaction or restricts access, report that limitation accurately.
-
-4. Fix MovieBox Homepage
-
-MovieBox's homepage scraping currently produces errors.
-
-Do not immediately patch the existing implementation.
-
-First, visit the actual MovieBox website using Chromium and understand how its homepage is constructed.
-
-Investigate:
-
-- Initial page loading and rendering.
-- Dynamic content and JavaScript-generated sections.
-- Homepage API requests.
-- Trending and featured sections.
-- Movie and TV series categories.
-- Poster and backdrop loading.
-- Pagination or lazy loading.
-- Required request headers and parameters.
-- Differences between server-rendered HTML and dynamically loaded content.
-
-Study both the visual website and its underlying network behavior.
-
-Then compare these findings against the current JavaScript scraper and identify the exact reason the homepage fails.
-
-Implement a proper fix that reproduces the website's actual content structure and response format.
-
-Do not replace the homepage with static data or an incomplete list.
-
-5. Verify Other MovieBox Features
-
-After fixing the homepage, check whether the same underlying problems affect:
-
-- Search.
-- Movie details.
-- Series details.
-- Seasons and episodes.
-- Categories and genres.
-- Pagination.
-- Images and metadata.
-- Playback source resolution.
-- Subtitles, where supported.
-
-Fix related issues discovered during investigation.
-
-Preserve the existing source interface and ensure all responses match the application's expected schema.
-
-6. Browser-to-Scraper Comparison
-
-For each affected feature, compare three things:
-
-1. What the actual website displays in Chromium.
-2. What the website returns through its network requests.
-3. What the JavaScript scraper currently produces.
-
-Use these comparisons to verify correctness.
-
-Test multiple search queries and different movie/series pages instead of relying on a single successful example.
-
-7. Android Integration and Regression Testing
-
-Check that the Android application correctly consumes the updated source implementations.
-
-Verify:
-
-- LK21 search results display correctly.
-- LK21 Hydrax and P2P extraction use the correct modules.
-- MovieBox homepage loads correctly.
-- MovieBox search and detail pages work.
-- Images and metadata are displayed correctly.
-- Loading and error states work properly.
-- Existing sources remain unaffected.
-
-Preserve existing diagnostics and error reporting.
-
-8. Verification
-
-Run all relevant JavaScript tests and fixture verification scripts.
-
-Run Android tests and build:
-
-./gradlew testDebugUnitTest
-./gradlew assembleDebug
-
-Perform real browser-based verification after implementing fixes.
-
-Do not consider a feature fixed just because the code compiles or a mock fixture passes.
-
-9. Final Report
-
-Provide:
-
-1. Browser investigation findings for LK21 and MovieBox.
-2. Root causes of LK21 search failures.
-3. Root causes of Hydrax parser failures.
-4. Root causes of MovieBox homepage failures.
-5. Actual endpoints and request/response structures discovered.
-6. Files and modules changed.
-7. Browser testing results and screenshots, where available.
-8. Automated test and Android build results.
-9. Remaining limitations.
-
-Critical Instructions
-
-- Browser simulation is mandatory before implementation.
-- Visually inspect the websites, not just their source code.
-- Study actual network requests and responses.
-- Do not invent endpoints or response structures.
-- Fix root causes instead of adding temporary workarounds.
-- Preserve working P2P functionality.
-- Avoid unrelated refactoring.
-- Do not leave TODOs, placeholders, or fake data.
-- Complete and verify both LK21 and MovieBox tasks.
-
-Priority: Actual website behavior is the source of truth. The scraper must reproduce what the website genuinely provides, not what the existing implementation assumes it provides.
-
-10. Critical Architecture: Fully Remote Movie Source System
-
-IMPORTANT: All movie source implementations and scraping logic must live exclusively in the "movie-source" repository.
-
-The main Android repository ("rofil.movie.app") must act only as a visual application framework and generic source client.
-
-A. Responsibilities of "movie-source"
-
-All source-related logic must be implemented and maintained in:
-
-"https://github.com/HamzahSk/movie-source"
-
-This includes:
-
-- All source definitions and registrations.
-- Homepage scraping.
-- Search and pagination.
-- Movie and series detail scraping.
-- Category and genre parsing.
-- Season and episode extraction.
-- Stream request handling.
-- P2P and Hydrax extractors.
-- All other stream parsers and resolvers.
-- Subtitle extraction and metadata.
-- Response normalization.
-- Source-specific request headers and parameters.
-- Source-specific error handling.
-- Source manifests and version information.
-
-The repository must expose a consistent, versioned interface that the Android application can consume remotely.
-
-B. Responsibilities of "rofil.movie.app"
-
-The main Android repository must remain source-agnostic.
-
-It should only handle:
-
-- UI and visual presentation.
-- Generic movie and series models.
-- Generic source discovery and registration.
-- Remote source manifest loading.
-- Downloading and caching source modules.
-- Executing source modules through the existing scripting/runtime engine.
-- Passing generic requests and arguments to source modules.
-- Rendering normalized responses.
-- Generic player integration.
-- Generic loading, error, and diagnostic states.
-
-Do not implement LK21-specific or MovieBox-specific scraping, parsing, endpoints, or extraction logic inside the Android repository.
-
-C. Dynamic Source Discovery
-
-Implement a mechanism that allows the Android application to discover new sources through the remote manifest.
-
-When a new source is added to "movie-source":
-
-1. Update the remote manifest.
-2. Publish the required source modules.
-3. The Android application fetches the updated manifest.
-4. It discovers the new source automatically.
-5. It downloads and caches the required modules.
-6. It makes the source available in the application.
-
-Adding a new movie source must NOT require modifying Android source code, adding hardcoded source registrations, or releasing a new APK.
-
-D. Dynamic Extractor and Parser Loading
-
-Extractors and parsers must also be independently managed in "movie-source".
-
-For example:
-
-- LK21 delegates to P2P or Hydrax modules.
-- Another source can use a completely different extractor.
-- New extractors can be added without modifying the Android application.
-
-Define clear module dependencies and ensure all required modules are available before executing a source.
-
-E. Remote Updates, Caching and Compatibility
-
-Implement:
-
-- Manifest versioning.
-- Individual module versioning or content hashes.
-- Local module caching.
-- Cache invalidation when remote modules change.
-- Dependency resolution.
-- Retryable download failures.
-- Compatibility checks between the app runtime and source modules.
-- Safe fallback to previously cached compatible versions when remote updates fail.
-
-Avoid downloading every module repeatedly when nothing has changed.
-
-F. Generic Source Execution Contract
-
-Define a consistent interface for all source modules.
-
-The Android application must not need to know the internal implementation of individual sources.
-
-Source-specific functionality must be exposed through the shared contract, including:
-
-- "home"
-- "search"
-- "detail"
-- "episodes"
-- "stream"
-- Other supported capabilities declared by the source manifest.
-
-Use the existing project conventions where possible instead of introducing an incompatible interface.
-
-G. Architecture Verification
-
-After implementing the changes, verify this scenario:
-
-1. Add a hypothetical new source directly to "movie-source".
-2. Register its modules and dependencies in the remote manifest.
-3. Publish the updated repository.
-4. Refresh the source manifest from the Android application.
-5. Confirm the new source appears without modifying or rebuilding the Android application.
-6. Verify its homepage, search, details, and playback through the generic runtime.
-
-This is a critical acceptance test.
-
-Final architectural rule: "movie-source" owns all scraping and extraction intelligence. "rofil.movie.app" owns the presentation and generic execution environment. Adding or updating sources must be possible entirely through "movie-source", without changing the main Android repository.
+1. In `$GITHUB_WORKSPACE`:
+   - Run `./gradlew testDebugUnitTest` and `./gradlew assembleDebug` and verify both pass without errors.
+2. In `$MOVIE_SOURCE_DIR` (branch `main`):
+   - Verify `README.md` accurately matches the existing files, `manifest.json`, and scripts in `tools/`.
+3. Provide a clear final report summarizing:
+   - UI/UX improvements made across theme, navigation (`Home / Favorite / Setting`), and the YouTube-style detail screen,
+   - Key sections included in both `README.md` files,
+   - Gradle test and debug APK build results.

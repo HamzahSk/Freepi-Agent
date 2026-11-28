@@ -16,6 +16,9 @@ import rofil.movie.app.data.scrape.StreamProvider
 import rofil.movie.app.data.scrape.WebViewCatalogDataSource
 import rofil.movie.app.data.scrape.WebViewScrapeEngine
 import rofil.movie.app.data.scrape.WebViewStreamResolver
+import rofil.movie.app.data.scrape.SourceModuleStore
+import rofil.movie.app.data.scrape.RemoteSourceRuntime
+import rofil.movie.app.data.scrape.RemoteCatalogDataSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,6 +52,10 @@ class AppContainer(application: Application) {
     }
 
     val sourceScripts: ScrapeScriptLoader by lazy { ScrapeScriptLoader(application) }
+    val moduleStore: SourceModuleStore by lazy { SourceModuleStore(File(application.filesDir, "movie-source"), okhttp3.OkHttpClient()) }
+    val remoteRuntime: RemoteSourceRuntime by lazy { RemoteSourceRuntime(application, moduleStore) }
+    val remoteCatalog: CatalogDataSource by lazy { RemoteCatalogDataSource(remoteRuntime, { sourceSelection.selectedId }) }
+    val remoteStreamProvider: StreamProvider by lazy { RemoteCatalogDataSource(remoteRuntime, { sourceSelection.selectedId }) }
 
     /** Centralised hidden-WebView scraping engine (all screens share one). */
     val scrapeEngine: WebViewScrapeEngine by lazy { WebViewScrapeEngine(application, sourceScripts) }
@@ -67,13 +74,13 @@ class AppContainer(application: Application) {
     val database: AppDatabase by lazy { AppDatabase.get(application) }
     val repository: MovieRepository by lazy {
         MovieRepository(
-            catalog = httpCatalog,
-            fallbackCatalog = webCatalog,
+            catalog = remoteCatalog,
+            fallbackCatalog = httpCatalog,
             streamProvider = streamProvider,
             client = client,
             database = database,
-            movieBoxCatalog = movieBoxCatalog,
-            movieBoxStreamProvider = movieBoxStreamProvider,
+            movieBoxCatalog = null,
+            movieBoxStreamProvider = remoteStreamProvider,
             selectedSource = { sourceSelection.selectedId },
             storeSelectedSource = sourceSelection::select,
         )
