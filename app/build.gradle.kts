@@ -76,6 +76,8 @@ android {
         jvmTarget = "17"
     }
 
+    sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
+
     buildFeatures {
         compose = true
         buildConfig = true

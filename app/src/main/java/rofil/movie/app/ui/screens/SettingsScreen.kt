@@ -43,7 +43,7 @@ import rofil.movie.app.ui.theme.Surface
 import rofil.movie.app.ui.theme.SurfaceElevated
 import rofil.movie.app.ui.theme.TextSecondary
 
-data class RemoteSourceOption(val id: String, val name: String)
+data class RemoteSourceOption(val id: String, val name: String, val version: String = "", val language: String = "", val website: String = "")
 
 @Composable
 fun SettingsScreen(
@@ -98,7 +98,10 @@ fun SettingsScreen(
                             contentDescription = null,
                             modifier = Modifier.padding(end = 8.dp),
                         )
-                        Text(source.name, modifier = Modifier.weight(1f))
+                        Column(Modifier.weight(1f)) {
+                            Text(source.name)
+                            Text(listOf(source.version, source.language, source.website).filter(String::isNotBlank).joinToString(" · "), style = MaterialTheme.typography.labelSmall)
+                        }
                         if (selected) Text("Active", style = MaterialTheme.typography.labelSmall)
                     }
                     Spacer(Modifier.height(8.dp))

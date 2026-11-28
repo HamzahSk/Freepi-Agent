@@ -1,0 +1,7 @@
+{
+  "name": "freepi-extension-integration",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node verify.mjs", "test:live": "node verify.mjs --live" },
+  "devDependencies": { "playwright-core": "1.58.2", "devalue": "6.0.4" }
+}

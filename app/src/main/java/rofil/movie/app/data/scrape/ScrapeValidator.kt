@@ -88,7 +88,7 @@ object ScrapeValidator {
         }
 
         data.optString("nextPageUrl").takeIf { it.isNotBlank() }?.let { next ->
-            if (!isAcceptableUrl(next)) {
+            if (!isAcceptableUrl(next) && !ExtensionRoutes.isRoute(next)) {
                 throw ParseException("Invalid next-page URL in list payload: $next")
             }
         }
@@ -169,7 +169,7 @@ object ScrapeValidator {
         return when (code) {
             ScrapeErrorCodes.ACCESS_BLOCKED -> AccessBlockedException(message)
             ScrapeErrorCodes.TIMEOUT -> ScrapeTimeoutException(message)
-            ScrapeErrorCodes.NAVIGATION_FAILED -> NetworkUnavailableException(message)
+            "NETWORK", ScrapeErrorCodes.NAVIGATION_FAILED -> NetworkUnavailableException(message)
             ScrapeErrorCodes.WEBVIEW_ERROR -> WebViewUnavailableException(message)
             else -> ParseException(message)
         }
@@ -255,7 +255,7 @@ object ScrapeValidator {
                 val item = array.optJSONObject(i) ?: continue
                 val path = item.optString("path")
                 if (path.isBlank()) continue
-                if (!isAcceptableUrl(path) && !path.startsWith("/")) {
+                if (!isAcceptableUrl(path) && !ExtensionRoutes.isRoute(path)) {
                     throw ParseException("Invalid filter path: $path")
                 }
             }

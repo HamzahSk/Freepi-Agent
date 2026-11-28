@@ -37,6 +37,7 @@ class MovieRepository(
     private val movieBoxStreamProvider: StreamProvider? = null,
     private val selectedSource: () -> String = { SourceSelection.LK21 },
     private val storeSelectedSource: (String) -> Unit = {},
+    private val sourceCatalog: ((String) -> CatalogDataSource)? = null,
 ) {
 
     companion object {
@@ -58,10 +59,10 @@ class MovieRepository(
     private val progressDao = database.watchProgressDao()
     private val favoriteDao = database.favoriteDao()
 
-    val selectedSourceId: String get() = selectedSource().takeIf { it in SourceSelection.SOURCE_IDS } ?: SourceSelection.LK21
+    val selectedSourceId: String get() = selectedSource()
 
     fun selectSource(id: String) {
-        require(id in SourceSelection.SOURCE_IDS) { "Unknown movie source" }
+        require(id.matches(Regex("[a-z0-9-]+"))) { "Unknown movie source" }
         if (id == selectedSourceId) return
         storeSelectedSource(id)
         clearCaches()
@@ -82,7 +83,7 @@ class MovieRepository(
     /** Load a catalog path like "/genre/action/" or an absolute/paginated URL. */
     suspend fun list(pathOrUrl: String, forceRefresh: Boolean = false): ListPage {
         val source = selectedSourceId
-        val key = "$source:${if (source == SourceSelection.MOVIEBOX) pathOrUrl else client.absolute(pathOrUrl)}"
+        val key = "$source:${if (source == SourceSelection.LK21) client.absolute(pathOrUrl) else pathOrUrl}"
         if (!forceRefresh) listCache.get(key)?.let { cacheHit(ScrapeKind.LIST); return it }
         return listFlight.run(key to forceRefresh) {
             if (!forceRefresh) listCache.get(key)?.let { return@run it }
@@ -103,10 +104,10 @@ class MovieRepository(
 
     suspend fun detail(slugOrUrl: String, forceRefresh: Boolean = false): MovieDetail {
         val source = selectedSourceId
-        val url = if (source == SourceSelection.MOVIEBOX || slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/${slugOrUrl.trim('/')}/")
+        val url = if (source != SourceSelection.LK21 || slugOrUrl.startsWith("http")) slugOrUrl else client.absolute("/${slugOrUrl.trim('/')}/")
         val key = "$source:$url"
         if (!forceRefresh) detailCache.get(key)?.let { cacheHit(ScrapeKind.DETAIL); return it }
-        return detailFlight.run(url to forceRefresh) {
+        return detailFlight.run(key to forceRefresh) {
             if (!forceRefresh) detailCache.get(key)?.let { return@run it }
             fromCatalog(source) { it.detail(url, forceRefresh) }.also { detailCache.put("$source:$url", it, TTL_DETAIL) }
         }
@@ -133,7 +134,7 @@ class MovieRepository(
      * layouts fall back to browser execution. Challenges always propagate.
      */
     private suspend fun <T> fromCatalog(sourceId: String = selectedSourceId, block: suspend (CatalogDataSource) -> T): T {
-        val primary = if (sourceId == SourceSelection.MOVIEBOX) movieBoxCatalog ?: catalog else catalog
+        val primary = sourceCatalog?.invoke(sourceId) ?: if (sourceId == SourceSelection.MOVIEBOX) movieBoxCatalog ?: catalog else catalog
         try {
             return block(primary)
         } catch (e: CancellationException) {
@@ -142,7 +143,7 @@ class MovieRepository(
             // A bot challenge is an access control: report it, do not bypass it.
             throw e
         } catch (e: SourceException) {
-            val fallback = if (sourceId == SourceSelection.MOVIEBOX) null else fallbackCatalog
+            val fallback = if (sourceId == SourceSelection.LK21) fallbackCatalog else null
             if (fallback == null) throw e
             Log.w(TAG, "Primary catalog failed (${e.javaClass.simpleName}); using fallback.")
             try {

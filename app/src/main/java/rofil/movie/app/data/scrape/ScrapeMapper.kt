@@ -57,7 +57,7 @@ class ScrapeMapper {
         val totalPages = data.optInt("totalPages", page).coerceAtLeast(page)
         val next = data.optString("nextPageUrl").trim()
             .takeIf { it.isNotBlank() }
-            ?.let { absolutize(it, baseUrl) }
+            ?.let { if (ExtensionRoutes.isRoute(it)) it else absolutize(it, baseUrl) }
         return ListPage(
             items = cards(data.optJSONArray("items"), baseUrl),
             page = page,
@@ -164,13 +164,13 @@ class ScrapeMapper {
         val seriesInfo = seriesInfo(data, pageUrl)
 
         return MovieDetail(
-            slug = slugFromUrl(pageUrl).ifBlank {
+            slug = data.optString("slug").ifBlank { slugFromUrl(pageUrl) }.ifBlank {
                 title.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]+"), "-")
             },
             title = title,
             url = pageUrl,
             poster = poster,
-            backdrop = poster,
+            backdrop = firstUrl(data.optString("backdrop"))?.let { absolutize(it, pageUrl) } ?: poster,
             synopsis = synopsis,
             year = year,
             durationText = durationText.takeIf { it.isNotBlank() }

@@ -78,14 +78,7 @@ fun AppRoot() {
     var selectedSource by remember(container) { mutableStateOf(container.sourceSelection.selectedId) }
     val playbackPreferences = remember(context) { PlaybackPreferences(context) }
     var autoPlayInline by remember(context) { mutableStateOf(playbackPreferences.autoPlayInline) }
-    var remoteSources by remember {
-        mutableStateOf(
-            listOf(
-                RemoteSourceOption(SourceSelection.LK21, "LK21"),
-                RemoteSourceOption(SourceSelection.MOVIEBOX, "MovieBox"),
-            )
-        )
-    }
+    var remoteSources by remember { mutableStateOf(emptyList<RemoteSourceOption>()) }
     var manifestStatus by remember { mutableStateOf("Manifest not synced in this session") }
     var syncingManifest by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -97,13 +90,20 @@ fun AppRoot() {
                 withContext(Dispatchers.IO) { container.moduleStore.refresh(force) }
             }.onSuccess { manifest ->
                 remoteSources = manifestSources(manifest)
-                manifestStatus = "Synced v${manifest.optString("version", "1")} · ${remoteSources.size} sources"
+                if (remoteSources.isNotEmpty() && remoteSources.none { it.id == selectedSource }) {
+                    container.repository.selectSource(remoteSources.first().id)
+                    selectedSource = remoteSources.first().id
+                }
+                container.repository.clearCaches()
+                manifestStatus = if (container.moduleStore.lastRefreshError != null) "Using last verified registry · update failed"
+                    else "Synced v${manifest.optString("version", "1")} · ${remoteSources.size} sources"
             }.onFailure { error ->
                 manifestStatus = "Using cached registry · ${error.message ?: "sync unavailable"}"
             }
             syncingManifest = false
         }
     }
+    LaunchedEffect(container) { syncManifest(false) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = currentRoute in setOf(Routes.HOME, Routes.FAVORITE, Routes.SETTINGS)
@@ -287,6 +287,7 @@ fun AppRoot() {
                 )
                 val state by vm.state.collectAsStateWithLifecycleCompat()
                 BrowseScreen(
+                    showLegacySections = selectedSource == "lk21",
                     state = state,
                     onBack = { navController.popBackStack() },
                     onMovieClick = { navController.navigateDetail(it.slug) },
@@ -332,19 +333,10 @@ fun AppRoot() {
 }
 
 private fun manifestSources(manifest: JSONObject): List<RemoteSourceOption> {
-    val sources = manifest.optJSONArray("sources") ?: return listOf(
-        RemoteSourceOption(SourceSelection.LK21, "LK21"),
-        RemoteSourceOption(SourceSelection.MOVIEBOX, "MovieBox"),
-    )
-    return (0 until sources.length()).mapNotNull { index ->
-        val item = sources.optJSONObject(index) ?: return@mapNotNull null
-        val id = item.optString("id").takeIf { it in SourceSelection.SOURCE_IDS } ?: return@mapNotNull null
-        RemoteSourceOption(id, item.optString("name").ifBlank { id.replaceFirstChar(Char::uppercase) })
-    }.ifEmpty {
-        listOf(
-            RemoteSourceOption(SourceSelection.LK21, "LK21"),
-            RemoteSourceOption(SourceSelection.MOVIEBOX, "MovieBox"),
-        )
+    val sources = manifest.getJSONArray("sources")
+    return (0 until sources.length()).map { index ->
+        val item = sources.getJSONObject(index)
+        RemoteSourceOption(item.getString("id"), item.getString("name"), item.getString("version"), item.optString("language"), item.optString("baseUrl"))
     }
 }
 

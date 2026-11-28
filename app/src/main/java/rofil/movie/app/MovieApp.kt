@@ -51,7 +51,7 @@ class AppContainer(application: Application) {
             .build())
     }
 
-    val sourceScripts: ScrapeScriptLoader by lazy { ScrapeScriptLoader(application) }
+    val sourceScripts: ScrapeScriptLoader by lazy { ScrapeScriptLoader(application, moduleStore) }
     val moduleStore: SourceModuleStore by lazy { SourceModuleStore(File(application.filesDir, "movie-source"), okhttp3.OkHttpClient()) }
     val remoteRuntime: RemoteSourceRuntime by lazy { RemoteSourceRuntime(application, moduleStore) }
     val remoteCatalog: CatalogDataSource by lazy { RemoteCatalogDataSource(remoteRuntime, { sourceSelection.selectedId }) }
@@ -76,13 +76,14 @@ class AppContainer(application: Application) {
         MovieRepository(
             catalog = remoteCatalog,
             fallbackCatalog = httpCatalog,
-            streamProvider = streamProvider,
+            streamProvider = rofil.movie.app.data.scrape.ExtensionStreamProvider(remoteRuntime, streamProvider),
             client = client,
             database = database,
             movieBoxCatalog = null,
-            movieBoxStreamProvider = remoteStreamProvider,
+            movieBoxStreamProvider = null,
             selectedSource = { sourceSelection.selectedId },
             storeSelectedSource = sourceSelection::select,
+            sourceCatalog = { id -> RemoteCatalogDataSource(remoteRuntime, { id }) },
         )
     }
 

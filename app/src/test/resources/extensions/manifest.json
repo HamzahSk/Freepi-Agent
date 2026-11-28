@@ -1,0 +1,365 @@
+{
+  "schemaVersion": 1,
+  "version": "2.0.0",
+  "runtimeVersion": 1,
+  "baseUrl": "https://raw.githubusercontent.com/HamzahSk/movie-source/main/",
+  "sources": [
+    {
+      "id": "lk21",
+      "version": "1.2.0",
+      "name": "LK21",
+      "language": "id",
+      "baseUrl": "https://tv13.lk21official.cc",
+      "entry": "extensions/lk21/extension.js",
+      "capabilities": [
+        "catalog",
+        "search",
+        "details",
+        "series",
+        "stream-resolution"
+      ],
+      "operations": [
+        "home",
+        "search",
+        "list",
+        "detail",
+        "stream"
+      ],
+      "runtime": {
+        "version": 1,
+        "module": "lk21",
+        "export": "lk21"
+      },
+      "dependencies": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "moviebox",
+      "version": "1.2.0",
+      "name": "MovieBox",
+      "language": "en",
+      "baseUrl": "https://movieboxhd.net",
+      "entry": "extensions/moviebox/extension.js",
+      "capabilities": [
+        "catalog",
+        "search",
+        "details",
+        "series",
+        "stream-resolution",
+        "subtitles"
+      ],
+      "operations": [
+        "home",
+        "search",
+        "list",
+        "detail",
+        "episodes",
+        "stream"
+      ],
+      "runtime": {
+        "version": 1,
+        "module": "moviebox",
+        "export": "moviebox"
+      },
+      "dependencies": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "movy",
+      "version": "1.0.0",
+      "name": "Movy",
+      "language": "en",
+      "baseUrl": "https://db.wecollege.net/3",
+      "entry": "extensions/movy/extension.js",
+      "capabilities": [
+        "catalog",
+        "search",
+        "details",
+        "series",
+        "stream-resolution",
+        "subtitles",
+        "multi-server"
+      ],
+      "operations": [
+        "home",
+        "search",
+        "list",
+        "detail",
+        "episodes",
+        "stream"
+      ],
+      "runtime": {
+        "version": 1,
+        "module": "movy",
+        "export": "movy"
+      },
+      "dependencies": [
+        "extractor-videasy"
+      ]
+    }
+  ],
+  "extractors": [
+    {
+      "id": "shared-runtime",
+      "version": "1.0.0",
+      "name": "shared-runtime",
+      "entry": "shared/runtime.js",
+      "module": "shared-runtime",
+      "dependencies": []
+    },
+    {
+      "id": "registry",
+      "version": "1.0.0",
+      "name": "extractor-registry",
+      "entry": "extractors/index.js",
+      "module": "extractor-registry",
+      "dependencies": [
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "shared",
+      "version": "1.0.0",
+      "name": "extractor-shared",
+      "entry": "extractors/shared.js",
+      "module": "extractor-shared",
+      "dependencies": [
+        "extractor-registry",
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "playlist",
+      "version": "1.0.0",
+      "name": "extractor-playlist",
+      "entry": "extractors/playlist.js",
+      "module": "extractor-playlist",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "videasy",
+      "version": "1.0.0",
+      "name": "extractor-videasy",
+      "entry": "extractors/videasy.js",
+      "module": "extractor-videasy",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "extractor-playlist",
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "p2p",
+      "version": "1.0.0",
+      "name": "extractor-p2p",
+      "entry": "extractors/p2p.js",
+      "module": "extractor-p2p",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "extractor-video-node",
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "hydrax",
+      "version": "1.0.0",
+      "name": "extractor-hydrax",
+      "entry": "extractors/hydrax.js",
+      "module": "extractor-hydrax",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "extractor-video-node",
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "video-node",
+      "version": "1.0.0",
+      "name": "extractor-video-node",
+      "entry": "extractors/video-node.js",
+      "module": "extractor-video-node",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "okru",
+      "version": "1.0.0",
+      "name": "extractor-okru",
+      "entry": "extractors/okru.js",
+      "module": "extractor-okru",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "dailymotion",
+      "version": "1.0.0",
+      "name": "extractor-dailymotion",
+      "entry": "extractors/dailymotion.js",
+      "module": "extractor-dailymotion",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    },
+    {
+      "id": "direct",
+      "version": "1.0.0",
+      "name": "extractor-direct",
+      "entry": "extractors/direct.js",
+      "module": "extractor-direct",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    }
+  ],
+  "modules": {
+    "shared-runtime": {
+      "path": "shared/runtime.js",
+      "version": "1.0.0",
+      "sha256": "54bbcc5f1ad70dda53b654f284c319caa945f756a14403bf2daff151d8fb5403",
+      "dependencies": []
+    },
+    "extractor-registry": {
+      "path": "extractors/index.js",
+      "version": "1.0.0",
+      "sha256": "51e15fdc503d5021fac818e5c42cb063c9397546c5a14a2fb2429578ca579bd2",
+      "dependencies": [
+        "shared-runtime"
+      ]
+    },
+    "extractor-shared": {
+      "path": "extractors/shared.js",
+      "version": "1.0.0",
+      "sha256": "e6d306432d726374460501842f7462790848d0353983982d298404342a2d3e4a",
+      "dependencies": [
+        "extractor-registry",
+        "shared-runtime"
+      ]
+    },
+    "extractor-playlist": {
+      "path": "extractors/playlist.js",
+      "version": "1.0.0",
+      "sha256": "0e3226c51b09dc45fec861b1c1c0312711be432bc4598d17748eb6d40e597134",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    },
+    "extractor-videasy": {
+      "path": "extractors/videasy.js",
+      "version": "1.0.0",
+      "sha256": "ed977290f8cdf41c446e138e2da5699950305b40834488c8064d81324fcfff9c",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "extractor-playlist",
+        "shared-runtime"
+      ]
+    },
+    "extractor-p2p": {
+      "path": "extractors/p2p.js",
+      "version": "1.0.0",
+      "sha256": "8868faf516cf225d7a54314df7e21d3ffe13221ece49548c54360dcbcbaec2e5",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "extractor-video-node",
+        "shared-runtime"
+      ]
+    },
+    "extractor-hydrax": {
+      "path": "extractors/hydrax.js",
+      "version": "1.0.0",
+      "sha256": "9ad3d1a506ee440412642172a8ae73d221533bc5849e6cbf12332da331ac151f",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "extractor-video-node",
+        "shared-runtime"
+      ]
+    },
+    "extractor-video-node": {
+      "path": "extractors/video-node.js",
+      "version": "1.0.0",
+      "sha256": "67d1a9ffe93516d6d0cc8f61ffe5a22a5a3a74ba6c3b7a3ed8654209d78a56c4",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    },
+    "extractor-okru": {
+      "path": "extractors/okru.js",
+      "version": "1.0.0",
+      "sha256": "f6a2d81f0febc71b62c94ae960a47df04e2d3bda5e6f87222edd9403e954e95c",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    },
+    "extractor-dailymotion": {
+      "path": "extractors/dailymotion.js",
+      "version": "1.0.0",
+      "sha256": "ec98755db6281908e9e234becad6cc0e618b2ab4902c6e0633f95e01e102d762",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    },
+    "extractor-direct": {
+      "path": "extractors/direct.js",
+      "version": "1.0.0",
+      "sha256": "d4bdb34a2d4aec31e8b6d752a7c7d8807fc11233bcfc5b1cebf715972b88b6d5",
+      "dependencies": [
+        "extractor-registry",
+        "extractor-shared",
+        "shared-runtime"
+      ]
+    },
+    "lk21": {
+      "path": "extensions/lk21/extension.js",
+      "version": "1.2.0",
+      "sha256": "6fe536aff892b97b3248e665a5e33d81173ce50fd5c0e9b8ae0eb886e33cd80f",
+      "dependencies": [
+        "shared-runtime"
+      ]
+    },
+    "moviebox": {
+      "path": "extensions/moviebox/extension.js",
+      "version": "1.2.0",
+      "sha256": "fb6ad16d7418d5a16d65369ce170460947b70ff89af79bb5f0d600ea847014ad",
+      "dependencies": [
+        "shared-runtime"
+      ]
+    },
+    "movy": {
+      "path": "extensions/movy/extension.js",
+      "version": "1.0.0",
+      "sha256": "ff710d138fdd9dd4844c9a0dd8dfb75ba4287129b42d091736812835f142c472",
+      "dependencies": [
+        "extractor-videasy"
+      ]
+    }
+  }
+}

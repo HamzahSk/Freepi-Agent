@@ -72,6 +72,7 @@ fun BrowseScreen(
     onSelect: (path: String, title: String) -> Unit,
     onLoadMore: () -> Unit,
     onRetry: () -> Unit,
+    showLegacySections: Boolean = true,
 ) {
     var kind by rememberSaveable { mutableStateOf("genre") }
     var query by rememberSaveable(state.path) { mutableStateOf("") }
@@ -114,7 +115,7 @@ fun BrowseScreen(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(quickSections, key = { it.second }) { (label, path) ->
+            items(if (showLegacySections) quickSections else emptyList(), key = { it.second }) { (label, path) ->
                 ChipLabel(
                     text = label,
                     selected = state.path == path,
@@ -127,7 +128,14 @@ fun BrowseScreen(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(browseKinds, key = { it.key }) { browseKind ->
+            items(browseKinds.filter { option ->
+                when (option.key) {
+                    "country" -> !state.filters?.countries.isNullOrEmpty()
+                    "year" -> !state.filters?.years.isNullOrEmpty()
+                    "quality" -> !state.filters?.qualities.isNullOrEmpty()
+                    else -> !state.filters?.genres.isNullOrEmpty()
+                }
+            }, key = { it.key }) { browseKind ->
                 ChipLabel(
                     text = browseKind.label,
                     selected = kind == browseKind.key,

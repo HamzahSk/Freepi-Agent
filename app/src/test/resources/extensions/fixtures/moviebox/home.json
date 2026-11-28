@@ -1,0 +1,655 @@
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "platformList": [
+      {
+        "name": "Netflix",
+        "uploadBy": "Regina"
+      },
+      {
+        "name": "PrimeVideo",
+        "uploadBy": "Lakimora"
+      },
+      {
+        "name": "Disney",
+        "uploadBy": "samrawit"
+      },
+      {
+        "name": "AppleTV",
+        "uploadBy": "Arf Yldrım"
+      },
+      {
+        "name": "Viu",
+        "uploadBy": "Daniel"
+      },
+      {
+        "name": "Hulu",
+        "uploadBy": "Andy"
+      },
+      {
+        "name": "Zee5",
+        "uploadBy": "Hassan Amadil"
+      },
+      {
+        "name": "Vivamax",
+        "uploadBy": "Deborah Nzolani"
+      },
+      {
+        "name": "Hoichoi",
+        "uploadBy": "Arun Jain"
+      },
+      {
+        "name": "Showmax",
+        "uploadBy": "Koka"
+      }
+    ],
+    "operatingList": [
+      {
+        "type": "SUBJECTS_MOVIE",
+        "position": 3,
+        "title": "Popular Series",
+        "subjects": [
+          {
+            "subjectId": "2845168888013275776",
+            "subjectType": 2,
+            "title": "Percy Jackson and the Olympians",
+            "description": "",
+            "releaseDate": "2023-12-19",
+            "duration": 0,
+            "genre": "Action,Adventure,Family",
+            "cover": {
+              "url": "https://pbcdnw.aoneroom.com/image/2026/11/18/b69cf287e62a381347a901a2d52b6e96.jpg",
+              "width": 1600,
+              "height": 2000,
+              "size": 619370,
+              "format": "jpg",
+              "thumbnail": "",
+              "blurHash": "eUHK^8^$^*?axa}kNIazkCM|?bNKNeofRl%1j[o#t7ofj[NHRjWBjF",
+              "gif": null,
+              "avgHueLight": "#84735a",
+              "avgHueDark": "#665b4a",
+              "id": "0"
+            },
+            "countryName": "United States",
+            "imdbRatingValue": "7.0",
+            "subtitles": "",
+            "ops": "",
+            "hasResource": true,
+            "trailer": {
+              "videoAddress": {
+                "videoId": "2088564150615031856",
+                "definition": "",
+                "url": "https://macdn.aoneroom.com/media/vone/2023/08/10/30cd68688df186542cb904861f21e365-sd.mp4",
+                "duration": 52,
+                "width": 848,
+                "height": 478,
+                "size": 2894539,
+                "fps": 0,
+                "bitrate": 0,
+                "type": 0
+              },
+              "cover": {
+                "url": "https://pbcdnw.aoneroom.com/image/2023/08/12/b94670a176271781fa7b661c87b75f10.webp",
+                "width": 850,
+                "height": 480,
+                "size": 9322,
+                "format": "webp",
+                "thumbnail": "",
+                "blurHash": "e34Lzcx_8wen?^R5jZozkCjFDNRO%gWBIAtRWAVsf6g2V?j@afozoz",
+                "gif": null,
+                "avgHueLight": "#1a232c",
+                "avgHueDark": "#1a232c",
+                "id": "0"
+              }
+            },
+            "detailPath": "percy-jackson-and-the-olympians-OxG19N1Uao3",
+            "staffList": [],
+            "appointmentCnt": 0,
+            "appointmentDate": "",
+            "corner": "",
+            "imdbRatingCount": 55798,
+            "stills": null,
+            "postTitle": "Trailer-Percy Jackson and the Olympians",
+            "season": 0,
+            "dubs": [],
+            "accessStrategy": {
+              "ruleType": 1,
+              "requiredVipLevel": 1,
+              "freeEpisodeCount": 2,
+              "previewSeconds": 300
+            },
+            "webHighRisk": false,
+            "isPornographic": false
+          },
+          {
+            "subjectId": "1464123087066202976",
+            "subjectType": 2,
+            "title": "Blade Runner 2099",
+            "description": "",
+            "releaseDate": "2026-11-25",
+            "duration": 0,
+            "genre": "Action,Drama,Mystery",
+            "cover": {
+              "url": "https://pbcdnw.aoneroom.com/image/2026/11/23/636673bfd11e4508d53243aaccec22a1.jpg",
+              "width": 2000,
+              "height": 3000,
+              "size": 639908,
+              "format": "jpg",
+              "thumbnail": "",
+              "blurHash": "eO7U}6Pqx^cFtmsEV@Z~WBj]W?slWAjYaeX9ozo#kCWWRPa0VsaKV@",
+              "gif": null,
+              "avgHueLight": "#30434e",
+              "avgHueDark": "#34454e",
+              "id": "0"
+            },
+            "countryName": "United States",
+            "imdbRatingValue": "6.9",
+            "subtitles": "",
+            "ops": "",
+            "hasResource": true,
+            "trailer": {
+              "videoAddress": {
+                "videoId": "1275979899865661272",
+                "definition": "",
+                "url": "https://macdn.aoneroom.com/media/vone/2026/11/17/772a9181f6586e65f6ff287bf0195f60-ld.mp4",
+                "duration": 147,
+                "width": 640,
+                "height": 360,
+                "size": 2924281,
+                "fps": 0,
+                "bitrate": 0,
+                "type": 0
+              },
+              "cover": {
+                "url": "https://pbcdnw.aoneroom.com/media/vone/2026/11/17/772a9181f6586e65f6ff287bf0195f60.jpg",
+                "width": 854,
+                "height": 480,
+                "size": 19034,
+                "format": "jpg",
+                "thumbnail": "",
+                "blurHash": "eICP9HWB0g9u%1?Go0of9bR*58WX^jRjIVRkNHoc-oR+E3WVV@-ot7",
+                "gif": null,
+                "avgHueLight": "#4f3b29",
+                "avgHueDark": "#4f3d2c",
+                "id": "0"
+              }
+            },
+            "detailPath": "blade-runner-2099-WbNP50mH9K1",
+            "staffList": [],
+            "appointmentCnt": 0,
+            "appointmentDate": "",
+            "corner": "",
+            "imdbRatingCount": 0,
+            "stills": null,
+            "postTitle": "Trailer-Blade Runner 2099",
+            "season": 0,
+            "dubs": [],
+            "accessStrategy": {
+              "ruleType": 1,
+              "requiredVipLevel": 1,
+              "freeEpisodeCount": 2,
+              "previewSeconds": 300
+            },
+            "webHighRisk": false,
+            "isPornographic": false
+          }
+        ],
+        "banner": null,
+        "opId": "1451012215674470592",
+        "url": "",
+        "liveList": [],
+        "filters": [],
+        "customData": null,
+        "genreTopId": "1232643093049001320",
+        "detailPath": "eJvhCT8w3t1"
+      },
+      {
+        "type": "SUBJECTS_MOVIE",
+        "position": 3,
+        "title": "Popular Movie",
+        "subjects": [
+          {
+            "subjectId": "9168495427082149592",
+            "subjectType": 1,
+            "title": "Steps",
+            "description": "",
+            "releaseDate": "2026-11-20",
+            "duration": 6120,
+            "genre": "Animation,Adventure,Comedy",
+            "cover": {
+              "url": "https://pbcdnw.aoneroom.com/image/2026/11/26/258dab7cb8b0fcaaa4afb8cd8d7c66cc.jpg",
+              "width": 1500,
+              "height": 2222,
+              "size": 1925320,
+              "format": "jpg",
+              "thumbnail": "",
+              "blurHash": "eRBp-UkFM{t7MdRzfiNGWAa#DgjXnhR-x]M}adxaogoyt6V[o~t6RQ",
+              "gif": null,
+              "avgHueLight": "#51537d",
+              "avgHueDark": "#464766",
+              "id": "0"
+            },
+            "countryName": "United States",
+            "imdbRatingValue": "6.7",
+            "subtitles": "",
+            "ops": "",
+            "hasResource": true,
+            "trailer": {
+              "videoAddress": {
+                "videoId": "995035574954357576",
+                "definition": "",
+                "url": "https://macdn.aoneroom.com/media/vone/2026/11/12/f86d99adfb2fe0d0f18e8aa72e7f0f02-ld.mp4",
+                "duration": 160,
+                "width": 640,
+                "height": 360,
+                "size": 6894424,
+                "fps": 0,
+                "bitrate": 0,
+                "type": 0
+              },
+              "cover": {
+                "url": "https://pbcdnw.aoneroom.com/media/vone/2026/11/12/f86d99adfb2fe0d0f18e8aa72e7f0f02.jpg",
+                "width": 854,
+                "height": 480,
+                "size": 37255,
+                "format": "jpg",
+                "thumbnail": "",
+                "blurHash": "eJAUEqsCbwxtwct:aMxGWXj]D*jFs,WBS$Z~oLR*oefkWER-R-ayae",
+                "gif": null,
+                "avgHueLight": "#4e6575",
+                "avgHueDark": "#485966",
+                "id": "0"
+              }
+            },
+            "detailPath": "steps-qJ0VewZNhVa",
+            "staffList": [],
+            "appointmentCnt": 0,
+            "appointmentDate": "",
+            "corner": "",
+            "imdbRatingCount": 3478,
+            "stills": null,
+            "postTitle": "Trailer-Steps",
+            "season": 0,
+            "dubs": [],
+            "accessStrategy": {
+              "ruleType": 1,
+              "requiredVipLevel": 1,
+              "freeEpisodeCount": 0,
+              "previewSeconds": 300
+            },
+            "webHighRisk": false,
+            "isPornographic": false
+          },
+          {
+            "subjectId": "432356853012649360",
+            "subjectType": 1,
+            "title": "Sidelined 3: End Game",
+            "description": "",
+            "releaseDate": "2026-01-01",
+            "duration": 5400,
+            "genre": "Romance",
+            "cover": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/11/26/303a290d276490278436ed2ba83c1775.jpeg",
+              "width": 846,
+              "height": 1271,
+              "size": 128988,
+              "format": "jpg",
+              "thumbnail": "",
+              "blurHash": "eBAvd[Nb0g-Ur?9Gxa-oRjX7AG-U-BI;M|?GspNHf$slIUkCofn+oy",
+              "gif": null,
+              "avgHueLight": "#49372d",
+              "avgHueDark": "#49382f",
+              "id": "0"
+            },
+            "countryName": "United States",
+            "imdbRatingValue": "6.1",
+            "subtitles": "",
+            "ops": "",
+            "hasResource": true,
+            "trailer": {
+              "videoAddress": {
+                "videoId": "7588144385331024736",
+                "definition": "",
+                "url": "https://macdn.aoneroom.com/media/vone/2026/11/26/50edfc8e0d9c4666ef8b8f900262b7bc-ld.mp4",
+                "duration": 300,
+                "width": 640,
+                "height": 360,
+                "size": 8668823,
+                "fps": 0,
+                "bitrate": 0,
+                "type": 0
+              },
+              "cover": {
+                "url": "https://pbcdn.aoneroom.com/media/vone/2026/11/26/50edfc8e0d9c4666ef8b8f900262b7bc.jpg",
+                "width": 854,
+                "height": 480,
+                "size": 10460,
+                "format": "jpg",
+                "thumbnail": "",
+                "blurHash": "eHB0.};=sXoPo3x2o3a~fRjtjvjsjtfPfPsto3jtjujujufRfQfRfQ",
+                "gif": null,
+                "avgHueLight": "#5e1e99",
+                "avgHueDark": "#390866",
+                "id": "0"
+              }
+            },
+            "detailPath": "sidelined-3-end-game-0oWj1RkcWv",
+            "staffList": [],
+            "appointmentCnt": 0,
+            "appointmentDate": "",
+            "corner": "",
+            "imdbRatingCount": 0,
+            "stills": null,
+            "postTitle": "Trailer-Sidelined 3: End Game",
+            "season": 0,
+            "dubs": [],
+            "accessStrategy": {
+              "ruleType": 1,
+              "requiredVipLevel": 1,
+              "freeEpisodeCount": 0,
+              "previewSeconds": 300
+            },
+            "webHighRisk": false,
+            "isPornographic": false
+          }
+        ],
+        "banner": null,
+        "opId": "6012314409228453688",
+        "url": "",
+        "liveList": [],
+        "filters": [],
+        "customData": null,
+        "genreTopId": "997144265920760504",
+        "detailPath": "8WtKSYJVEb1"
+      },
+      {
+        "type": "APPOINTMENT_LIST",
+        "position": 6,
+        "title": "Coming Soon",
+        "subjects": [
+          {
+            "subjectId": "3393086452140493080",
+            "subjectType": 2,
+            "title": "Trinity",
+            "description": "",
+            "releaseDate": "2026-12-01",
+            "duration": 0,
+            "genre": "Drama,Thriller",
+            "cover": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/11/26/a4e610524c95dc062cab140446bea1ca.jpg",
+              "width": 450,
+              "height": 630,
+              "size": 51796,
+              "format": "jpg",
+              "thumbnail": "",
+              "blurHash": "eD8EPY4T%gIUxGx]RPX8s.RjM{axxbazWUIoxaaLozjZIoxuM{ofaz",
+              "gif": null,
+              "avgHueLight": "#303a44",
+              "avgHueDark": "#333c44",
+              "id": "0"
+            },
+            "countryName": "United States",
+            "imdbRatingValue": "6.9",
+            "subtitles": "",
+            "ops": "",
+            "hasResource": false,
+            "trailer": {
+              "videoAddress": {
+                "videoId": "6514754748649197232",
+                "definition": "",
+                "url": "https://macdn.aoneroom.com/media/vone/2026/11/25/c8431eb1f41620b2ee713ad07e32830a-ld.mp4",
+                "duration": 105,
+                "width": 640,
+                "height": 360,
+                "size": 2732191,
+                "fps": 0,
+                "bitrate": 0,
+                "type": 0
+              },
+              "cover": {
+                "url": "https://pbcdn.aoneroom.com/media/vone/2026/11/25/c8431eb1f41620b2ee713ad07e32830a.jpg",
+                "width": 854,
+                "height": 480,
+                "size": 19405,
+                "format": "jpg",
+                "thumbnail": "",
+                "blurHash": "e571o}8_~WnQVt?H8{-:V@jGROR*WUbHR*EK%fE1X7S101%gD*bYoz",
+                "gif": null,
+                "avgHueLight": "#2c3032",
+                "avgHueDark": "#2e3032",
+                "id": "0"
+              }
+            },
+            "detailPath": "trinity-QuqbPL3nE24",
+            "staffList": [],
+            "appointmentCnt": 1624,
+            "appointmentDate": "2026-12-01",
+            "corner": "",
+            "imdbRatingCount": 0,
+            "stills": null,
+            "postTitle": "Trailer-Trinity",
+            "season": 0,
+            "dubs": [],
+            "accessStrategy": null,
+            "webHighRisk": false,
+            "isPornographic": false
+          },
+          {
+            "subjectId": "6060991864533046304",
+            "subjectType": 2,
+            "title": "Ruthless",
+            "description": "",
+            "releaseDate": "2020-03-19",
+            "duration": 0,
+            "genre": "Crime,Drama,Romance",
+            "cover": {
+              "url": "https://pbcdnw.aoneroom.com/image/2026/11/26/ebfcf9cc1a433e1dcfeb55e3618e28f2.jpg",
+              "width": 2000,
+              "height": 3000,
+              "size": 498127,
+              "format": "jpg",
+              "thumbnail": "",
+              "blurHash": "e48pA~xJ5Ps=$j0xWV%0WVogKXWTxFoJIqNXWnNZWVs*NEjbS0W,xH",
+              "gif": null,
+              "avgHueLight": "#442150",
+              "avgHueDark": "#452550",
+              "id": "0"
+            },
+            "countryName": "United States",
+            "imdbRatingValue": "4.7",
+            "subtitles": "",
+            "ops": "",
+            "hasResource": true,
+            "trailer": {
+              "videoAddress": {
+                "videoId": "6856498448603502016",
+                "definition": "",
+                "url": "https://macdn.aoneroom.com/media/video/2022/11/04/5db865753dc05d893dc041dc1393c741-sd.mp4",
+                "duration": 29,
+                "width": 848,
+                "height": 478,
+                "size": 927560,
+                "fps": 0,
+                "bitrate": 0,
+                "type": 0
+              },
+              "cover": {
+                "url": "https://pbcdnw.aoneroom.com/image/2022/11/04/f156d6a7f3e2be3c4403ba48b3b7960c.webp",
+                "width": 480,
+                "height": 270,
+                "size": 5882,
+                "format": "webp",
+                "thumbnail": "",
+                "blurHash": "e87^oW%M0LIAWV^jWBE2xtxuxas:RjR*xax]%2RPE1oLNGWBjYt7xu",
+                "gif": null,
+                "avgHueLight": "#332824",
+                "avgHueDark": "#332a27",
+                "id": "0"
+              }
+            },
+            "detailPath": "ruthless-GDxWvFepJd7",
+            "staffList": [],
+            "appointmentCnt": 740,
+            "appointmentDate": "2026-12-01",
+            "corner": "",
+            "imdbRatingCount": 1570,
+            "stills": null,
+            "postTitle": "Trailer-Ruthless",
+            "season": 0,
+            "dubs": [],
+            "accessStrategy": {
+              "ruleType": 1,
+              "requiredVipLevel": 1,
+              "freeEpisodeCount": 2,
+              "previewSeconds": 300
+            },
+            "webHighRisk": false,
+            "isPornographic": false
+          }
+        ],
+        "banner": null,
+        "opId": "7142882096728997984",
+        "url": "",
+        "liveList": [],
+        "filters": [],
+        "customData": null,
+        "genreTopId": "",
+        "detailPath": ""
+      },
+      {
+        "type": "SUBJECTS_MOVIE",
+        "position": 8,
+        "title": "Action Movies",
+        "subjects": [
+          {
+            "subjectId": "1050173597374890184",
+            "subjectType": 1,
+            "title": "Street Fighter",
+            "description": "",
+            "releaseDate": "2026-10-16",
+            "duration": 7200,
+            "genre": "Action",
+            "cover": {
+              "url": "https://pbcdnw.aoneroom.com/image/2026/11/26/8e718deb49a6684c719c2b12830b570a.jpg",
+              "width": 878,
+              "height": 1300,
+              "size": 436755,
+              "format": "jpg",
+              "thumbnail": "",
+              "blurHash": "eKGQC5}[o#-VWrn4V?rqM|ax5Rn5R*OAxDX-TKFytRt79taJv}V@W.",
+              "gif": null,
+              "avgHueLight": "#7a4129",
+              "avgHueDark": "#663926",
+              "id": "0"
+            },
+            "countryName": "United States",
+            "imdbRatingValue": "6.1",
+            "subtitles": "",
+            "ops": "",
+            "hasResource": true,
+            "trailer": null,
+            "detailPath": "street-fighter-2DhSc6ZNzf1",
+            "staffList": [],
+            "appointmentCnt": 0,
+            "appointmentDate": "",
+            "corner": "",
+            "imdbRatingCount": 24950,
+            "stills": null,
+            "postTitle": "Trailer-Street Fighter",
+            "season": 0,
+            "dubs": [],
+            "accessStrategy": {
+              "ruleType": 1,
+              "requiredVipLevel": 1,
+              "freeEpisodeCount": 0,
+              "previewSeconds": 300
+            },
+            "webHighRisk": false,
+            "isPornographic": false
+          },
+          {
+            "subjectId": "3747168628379206984",
+            "subjectType": 1,
+            "title": "The Last Temptation of Becky",
+            "description": "",
+            "releaseDate": "2026-11-04",
+            "duration": 5340,
+            "genre": "Action,Comedy,Horror",
+            "cover": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/11/07/ccf15a0786e35683255956343bb9973a.jpg",
+              "width": 2406,
+              "height": 3471,
+              "size": 1338476,
+              "format": "jpg",
+              "thumbnail": "",
+              "blurHash": "eACq#,%K0fIVBT[a$hF?j?OYEyw]ofXRR+$xbuspNaJ7m:R+K0jYS~",
+              "gif": null,
+              "avgHueLight": "#612925",
+              "avgHueDark": "#612d29",
+              "id": "0"
+            },
+            "countryName": "United States",
+            "imdbRatingValue": "6.5",
+            "subtitles": "",
+            "ops": "",
+            "hasResource": true,
+            "trailer": {
+              "videoAddress": {
+                "videoId": "5972847489278437440",
+                "definition": "",
+                "url": "https://macdn.aoneroom.com/media/vone/2026/11/07/e57215e76c5162bcb38c1453434aae16-ld.mp4",
+                "duration": 123,
+                "width": 640,
+                "height": 360,
+                "size": 3866961,
+                "fps": 0,
+                "bitrate": 0,
+                "type": 0
+              },
+              "cover": {
+                "url": "https://pbcdn.aoneroom.com/media/vone/2026/11/07/e57215e76c5162bcb38c1453434aae16.jpg",
+                "width": 854,
+                "height": 480,
+                "size": 13503,
+                "format": "jpg",
+                "thumbnail": "",
+                "blurHash": "e02PY,k=iJtRkCxcW;bcawaxL#V@b^adaexun+njofj[Q.jGf+j[f8",
+                "gif": null,
+                "avgHueLight": "#121d1f",
+                "avgHueDark": "#141e1f",
+                "id": "0"
+              }
+            },
+            "detailPath": "the-last-temptation-of-becky-wi7qU2t4Os4",
+            "staffList": [],
+            "appointmentCnt": 0,
+            "appointmentDate": "",
+            "corner": "",
+            "imdbRatingCount": 182,
+            "stills": null,
+            "postTitle": "Trailer-The Last Temptation of Becky",
+            "season": 0,
+            "dubs": [],
+            "accessStrategy": {
+              "ruleType": 1,
+              "requiredVipLevel": 1,
+              "freeEpisodeCount": 0,
+              "previewSeconds": 300
+            },
+            "webHighRisk": false,
+            "isPornographic": false
+          }
+        ],
+        "banner": null,
+        "opId": "2451926499734210328",
+        "url": "",
+        "liveList": [],
+        "filters": [],
+        "customData": null,
+        "genreTopId": "7269188813871016696",
+        "detailPath": "4op2RuDXYE8"
+      }
+    ]
+  }
+}

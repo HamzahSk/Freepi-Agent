@@ -169,7 +169,7 @@ private fun HomeContent(
                 title = "Popular now",
                 movies = data.popular,
                 onMovieClick = onMovieClick,
-                onSeeAll = { onBrowse("/populer/", "Popular now") },
+                onSeeAll = if (sourceId == "lk21") ({ onBrowse("/populer/", "Popular now") }) else null,
             )
         }
         item {
@@ -177,7 +177,7 @@ private fun HomeContent(
                 title = "New releases",
                 movies = data.latest,
                 onMovieClick = onMovieClick,
-                onSeeAll = { onBrowse("/latest/", "New releases") },
+                onSeeAll = if (sourceId == "lk21") ({ onBrowse("/latest/", "New releases") }) else null,
             )
         }
         item {
@@ -185,7 +185,7 @@ private fun HomeContent(
                 title = "Recommended for you",
                 movies = data.recommended,
                 onMovieClick = onMovieClick,
-                onSeeAll = { onBrowse("/rekomendasi-film-pintar", "Recommended") },
+                onSeeAll = if (sourceId == "lk21") ({ onBrowse("/rekomendasi-film-pintar", "Recommended") }) else null,
             )
         }
         item {
@@ -193,7 +193,7 @@ private fun HomeContent(
                 title = "Series & drama",
                 movies = data.series,
                 onMovieClick = onMovieClick,
-                onSeeAll = { onBrowse("/latest-series/", "Series & drama") },
+                onSeeAll = if (sourceId == "lk21") ({ onBrowse("/latest-series/", "Series & drama") }) else null,
             )
         }
         if (data.filters.genres.isNotEmpty()) {
@@ -211,7 +211,7 @@ private fun HomeContent(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                Row(
+                if (sourceId == "lk21") Row(
                     Modifier.padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {

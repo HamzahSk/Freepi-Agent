@@ -11,13 +11,14 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /** Fetches the public script registry and keeps the last valid manifest and scripts on disk. */
-class ScrapeScriptLoader(context: Context) {
+class ScrapeScriptLoader(context: Context, private val moduleStore: SourceModuleStore? = null) {
     private val cacheDir = File(context.applicationContext.filesDir, "movie-source").apply { mkdirs() }
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
         .callTimeout(15, TimeUnit.SECONDS)
         .build()
+    private val modules by lazy { moduleStore ?: SourceModuleStore(cacheDir, client) }
 
     @Synchronized
     fun script(request: ScrapeRequest, requestId: String): String {
@@ -55,32 +56,31 @@ class ScrapeScriptLoader(context: Context) {
     @Synchronized
     fun extractorScript(id: String): String {
         require(id.matches(Regex("[a-z0-9-]+"))) { "Invalid extractor id" }
-        val entries = loadManifest().optJSONArray("extractors")
-            ?: throw ParseException("The source registry has no extractors. Retry after the registry is updated.")
-        val extractor = (0 until entries.length()).mapNotNull { entries.optJSONObject(it) }
-            .firstOrNull { it.optString("id") == id }
-            ?: throw ParseException("The source registry has no '$id' extractor. Retry after the registry is updated.")
-        return loadScript(extractor.optString("entry"))
+        val manifest = modules.refresh()
+        val entries = manifest.getJSONArray("extractors")
+        val extractor = (0 until entries.length()).map { entries.getJSONObject(it) }
+            .firstOrNull { it.getString("id") == id }
+            ?: throw ParseException("The source registry has no '$id' extractor.")
+        return modules.scripts(manifest, extractor.getString("module"))
     }
 
     private fun loadManifest(): JSONObject {
         val cacheFile = File(cacheDir, "manifest.json")
-        val raw = try {
-            fetch("manifest.json")
-        } catch (e: IOException) {
-            cacheFile.takeIf(File::isFile)?.readText()
-                ?: throw NetworkUnavailableException("Cannot reach movie-source and no cached script registry is available. Check your connection and retry.", e)
+        fun legacy(raw: String): JSONObject = JSONObject(raw).also { manifest ->
+            require(manifest.optInt("schemaVersion") == 1)
+            val sources = manifest.getJSONArray("sources")
+            require((0 until sources.length()).any {
+                val source = sources.getJSONObject(it)
+                source.optString("id") == "lk21" && source.optJSONObject("scripts") != null
+            }) { "This registry delegates catalog execution to extensions and no longer publishes legacy browser scripts" }
         }
         return try {
-            JSONObject(raw).also { manifest ->
-                if (manifest.optInt("schemaVersion") != 1 || manifest.optJSONArray("sources") == null) {
-                    throw IllegalArgumentException("unsupported registry schema")
-                }
-                if (manifest.optJSONArray("extractors") == null) throw IllegalArgumentException("missing extractors")
-                writeAtomically(cacheFile, raw)
-            }
+            val raw = fetch("manifest.json")
+            legacy(raw).also { writeAtomically(cacheFile, raw) }
         } catch (e: Exception) {
-            throw ParseException("The movie-source registry is invalid. Retry after the repository is corrected.", e)
+            // Module-only registries must not overwrite the last usable legacy script registry.
+            cacheFile.takeIf(File::isFile)?.let { runCatching { legacy(it.readText()) }.getOrNull() }
+                ?: throw ParseException("Legacy browser scripts are unavailable; use the extension runtime or HTTP fallback.", e)
         }
     }
 
