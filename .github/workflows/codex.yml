@@ -22,9 +22,9 @@ on:
         required: false
         default: "HamzahSk/movie-source"
         type: string
-  push:
-    paths:
-      - "prompt.md"
+#  push:
+#    paths:
+#      - "prompt.md"
 
 concurrency:
   group: codex-${{ github.workflow }}-${{ github.ref }}
