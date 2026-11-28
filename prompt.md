@@ -1,225 +1,147 @@
-Refactor Movie Source Architecture — JavaScript Extension System
+Synchronize Android App with New Movie Source Architecture
 
-Saya ingin mengubah arsitektur repository "HamzahSk/movie-source" menjadi sistem extension yang terstruktur, terinspirasi dari Tachiyomi Extensions, tetapi dengan pendekatan yang lebih sederhana.
+Saya sudah melakukan refactor besar pada repository "HamzahSk/movie-source". Sekarang arsitekturnya menggunakan sistem JavaScript Extension modular seperti Tachiyomi Extensions, dengan shared extractor registry.
 
-1. Analisis terlebih dahulu
+Tugas kamu adalah menyinkronkan repository aplikasi Android ini agar sepenuhnya kompatibel dengan struktur dan sistem terbaru tersebut.
 
-Sebelum mengubah kode, lakukan analisis menyeluruh terhadap:
+Repository source:
+"https://github.com/HamzahSk/movie-source"
 
-- Struktur repository "movie-source".
-- Sistem manifest dan registrasi source saat ini.
-- Runtime JavaScript dan mekanisme pemanggilan module.
-- Sistem scraping, parsing HTML, extractor, stream, dan dependency.
-- Kontrak data antara source dan aplikasi Android.
-- Folder "movy" yang berisi script dari Tachiyomi Extension.
+1. Audit kedua repository
 
-Pahami bagaimana setiap bagian saling terhubung. Jangan langsung melakukan refactor sebelum memahami arsitektur yang sudah ada.
+Sebelum mengubah kode, pelajari terlebih dahulu:
 
-2. Arsitektur extension baru
+- Struktur terbaru "movie-source".
+- "manifest.json" dan schema terbarunya.
+- Sistem extension dan export masing-masing source.
+- Sistem shared dependencies dan module loading.
+- "extractors/index.js" dan seluruh shared extractor.
+- Build output "extension.js".
+- Hash verification dan module caching.
+- Implementasi Android saat ini: "SourceModuleStore", "RemoteSourceRuntime", "ScrapeScriptLoader", "ScrapeValidator", dan "ScrapeMapper".
 
-Buat sistem source yang mirip Tachiyomi Extensions dengan ketentuan:
+Jangan hanya mengandalkan dokumentasi atau laporan refactor sebelumnya. Periksa implementasi sebenarnya di kedua repository.
 
-- Setiap website/provider menjadi satu extension.
-- Setiap extension berupa file atau modul JavaScript (".js").
-- Tidak membutuhkan Kotlin, Gradle, APK, atau proses compile.
-- Extension dapat ditambahkan, diperbarui, dan dihapus secara independen.
-- Source tidak boleh memiliki ketergantungan langsung terhadap UI Android.
-- Semua extension mengikuti satu standar API dan mengembalikan normalized response yang kompatibel dengan aplikasi saat ini.
+2. Sinkronisasi Manifest dan Module Loader
 
-Buat struktur direktori yang konsisten dan scalable. Pisahkan extension berdasarkan provider, bukan mencampur semua logic dalam satu file.
+Pastikan aplikasi Android dapat membaca manifest terbaru dan menangani:
 
-Contoh gambaran struktur (silakan sesuaikan setelah analisis):
+- Multiple independent extensions.
+- Export masing-masing extension.
+- Entry point dan runtime configuration.
+- Dependencies antar-module.
+- Shared extractor registry.
+- SHA-256 setiap module.
+- Versioning dan update extension.
 
-movie-source/
-├── manifest.json
-├── extensions/
-│   ├── movy/
-│   │   ├── extension.js
-│   │   ├── config.json
-│   │   └── README.md
-│   └── other-source/
-│       ├── extension.js
-│       ├── config.json
-│       └── README.md
-├── runtime/
-├── shared/
-├── schemas/
-└── README.md
+Pastikan dependency dimuat dalam urutan yang benar sebelum extension dijalankan.
 
-Struktur tersebut hanya referensi. Rancang struktur terbaik berdasarkan kebutuhan runtime yang sudah ada.
+Perhatikan bahwa setiap extension sekarang memiliki module dan export masing-masing, bukan lagi satu global catalog runtime.
 
-3. Migrasi source Movy
+3. Integrasi Shared Extractors
 
-Saya sudah menyediakan script Tachiyomi Extension di folder "movy".
+Ini bagian yang sangat penting.
 
-Tugas kamu:
+Aplikasi harus dapat menggunakan shared extractor dari repository "movie-source".
 
-- Pelajari seluruh struktur dan source code di folder tersebut.
-- Identifikasi cara kerja source, request, parsing, pencarian, kategori, detail, chapter/episode, dan stream jika tersedia.
-- Migrasikan source tersebut menjadi extension baru bernama "movy".
-- Ubah seluruh implementasi yang diperlukan menjadi JavaScript.
-- Jangan sekadar mengganti ekstensi file. Adaptasikan API, dependency, HTTP request, HTML parsing, dan seluruh mekanisme khusus Tachiyomi agar berjalan di runtime project ini.
-- Pertahankan fitur dan perilaku asli source sejauh memungkinkan.
-- Jangan membawa dependency Android/Kotlin yang tidak diperlukan.
+Pastikan:
 
-Jika ada fitur Tachiyomi yang tidak memiliki padanan di runtime sekarang, cari pendekatan JavaScript yang kompatibel.
+- Extractor registry dapat dimuat dengan benar.
+- Extension dapat memanggil extractor bersama.
+- Dependency extractor tidak terduplikasi.
+- Extractor tetap tersedia untuk semua extension yang membutuhkannya.
+- Kegagalan satu extractor tidak merusak source lainnya.
 
-4. Standarisasi API
+Dukung extractor yang tersedia saat ini, termasuk Videasy, P2P, Hydrax, OK.ru, Dailymotion, dan Direct.
 
-Buat kontrak API yang jelas untuk setiap extension.
+Jangan mengimplementasikan ulang parser extractor di Android jika sudah tersedia dalam JavaScript.
 
-Minimal pertimbangkan operasi:
+4. Pertahankan Runtime Compatibility
 
-- "home"
-- "search"
-- "list"
-- "detail"
-- "episodes"
-- "stream"
+Pastikan "RemoteSourceRuntime" dapat menjalankan semua extension terbaru di isolated WebView.
 
-Setiap extension harus mengikuti kontrak yang sama dan menghasilkan response yang kompatibel dengan format "freepi.*.v1" yang digunakan aplikasi Android.
+Periksa:
 
-Buat dokumentasi API, contoh implementasi extension, validasi response, dan mekanisme error handling.
+- JavaScript execution environment.
+- HTTP bridge melalui "MovieSourceHttp".
+- Module initialization dan dependency loading.
+- Export resolution.
+- Pemanggilan operasi "home", "search", "list", "detail", "episodes", dan "stream".
+- Error propagation.
+- Timeout dan cancellation.
+- Logging dan debugging.
 
-5. Manifest dan registrasi
+Pastikan tidak ada asumsi bahwa Node.js atau native ESM tersedia di WebView.
 
-Perbarui "manifest.json" agar mendukung sistem extension baru.
+5. Sinkronisasi Seluruh Source
 
-Pastikan manifest dapat mendeskripsikan:
+Pastikan semua source yang terdaftar di manifest dapat digunakan melalui aplikasi:
 
-- ID dan nama extension.
-- Versi extension.
-- Bahasa dan URL website.
-- Path module.
-- Runtime/API version.
-- Dependency jika diperlukan.
-- SHA-256 untuk verifikasi integritas.
+- LK21
+- MovieBox
+- Movy
 
-Pastikan sistem registrasi tetap kompatibel dengan mekanisme verifikasi dan download module yang digunakan aplikasi.
+Setiap source harus memiliki fitur yang sesuai dengan kemampuan extension masing-masing.
 
-6. Kompatibilitas Android
+Pastikan pencarian, katalog, kategori/filter, detail film, detail series, episode, dan playback berjalan dengan benar.
 
-Ini sangat penting:
+Jangan mengasumsikan semua source memiliki fitur yang sama. Gunakan operasi yang benar-benar didukung masing-masing extension.
 
-- Jangan mengubah UI aplikasi Android.
-- Jangan merusak "RemoteSourceRuntime".
-- Jangan mengubah kontrak normalized response secara sembarangan.
-- Pertahankan mekanisme hash verification dan cache module.
-- Pastikan extension baru dapat dimuat melalui runtime yang sudah tersedia.
-- Jika perlu perubahan pada runtime, lakukan hanya jika benar-benar diperlukan dan jelaskan alasannya.
+6. UI dan Source Management
 
-7. Testing
+Periksa apakah halaman Settings dan mekanisme pemilihan source sudah sesuai.
 
-Setelah implementasi:
+Pastikan:
 
-- Jalankan simulasi setiap operasi extension.
-- Uji request dan parsing secara nyata.
-- Uji pencarian dengan beberapa keyword.
-- Uji detail, episode, dan stream jika tersedia.
-- Validasi semua response terhadap schema.
-- Pastikan tidak ada dependency Tachiyomi yang tertinggal.
-- Pastikan source dapat berjalan secara independen.
+- Source yang tersedia berasal dari manifest remote.
+- Source dapat dipilih dan diganti.
+- Informasi nama, versi, bahasa, dan website ditampilkan dengan benar.
+- Refresh manifest dan module berjalan.
+- Update source tidak menghapus Favorites, History, atau Watch Progress.
+- Cache catalog dibersihkan secara tepat ketika source diganti.
+- Source yang gagal diperbarui tidak menghilangkan snapshot terakhir yang masih valid.
 
-Jangan hanya membuat mock test. Gunakan pengujian nyata terhadap website Movy jika dapat diakses.
+Jangan melakukan redesign UI besar-besaran. Fokus pada sinkronisasi dan perbaikan yang diperlukan.
 
-8. Dokumentasi
+7. Testing Wajib
 
-Perbarui README dengan panduan:
+Lakukan pengujian integrasi menggunakan repository "movie-source" yang sebenarnya.
 
-- Cara kerja sistem extension.
-- Struktur direktori.
-- Standar API.
-- Cara membuat source baru.
-- Cara menambahkan extension ke manifest.
-- Cara melakukan update extension.
-- Contoh extension JavaScript sederhana.
+Minimal lakukan:
 
-Target akhir: "movie-source" menjadi repository extension JavaScript yang modular, seperti ekosistem Tachiyomi Extensions, tetapi tanpa build aplikasi. Menambahkan provider baru cukup dengan membuat folder extension dan file JavaScript, kemudian mendaftarkannya di manifest.
+1. Download dan validasi manifest.
+2. Download seluruh dependency module.
+3. Verifikasi SHA-256.
+4. Load extension LK21, MovieBox, dan Movy.
+5. Uji seluruh operasi yang tersedia.
+6. Uji shared extractor.
+7. Uji stream resolution.
+8. Uji perpindahan source.
+9. Uji refresh dan update module.
+10. Uji kondisi jaringan gagal dan module tidak valid.
 
-Kerjakan secara bertahap. Prioritaskan analisis arsitektur, lalu desain sistem, migrasi Movy, integrasi runtime, dan pengujian. Jangan menghapus fitur lama sebelum memastikan penggantinya berjalan.
+Gunakan fixture untuk pengujian deterministik dan live testing jika memungkinkan.
 
-9. Shared Extractor System (Penting)
+Jika website memblokir runner atau request gagal karena keterbatasan jaringan, dokumentasikan hasilnya. Jangan menganggap pengujian berhasil hanya karena mock test lolos.
 
-Saya ingin memisahkan sistem extractor dari source extension.
+8. Build dan Final Verification
 
-Semua parser dan stream resolver yang bersifat umum harus disimpan di folder "extractors/" pada root repository, bukan di dalam folder masing-masing extension.
+Setelah selesai:
 
-Tujuannya agar beberapa source bisa menggunakan extractor yang sama tanpa duplikasi kode.
+- Jalankan "./gradlew testDebugUnitTest".
+- Jalankan "./gradlew assembleDebug".
+- Perbaiki seluruh error yang berkaitan dengan perubahan.
+- Pastikan tidak ada regresi pada fitur aplikasi yang sudah berjalan.
 
-Struktur yang diharapkan
+Aturan Penting
 
-movie-source/
-├── manifest.json
-├── extensions/
-│   ├── movy/
-│   │   ├── extension.js
-│   │   └── config.json
-│   ├── source-b/
-│   │   ├── extension.js
-│   │   └── filter.js
-│   └── source-c/
-│       └── extension.js
-│
-├── extractors/
-│   ├── okru.js
-│   ├── dailymotion.js
-│   ├── p2p.js
-│   └── index.js
-│
-├── shared/
-├── runtime/
-├── schemas/
-└── README.md
+- Jangan mengubah kontrak "freepi.*.v1" tanpa alasan yang kuat.
+- Jangan merusak kompatibilitas dengan manifest dan runtime terbaru.
+- Jangan menduplikasi extractor di aplikasi Android.
+- Jangan menghapus fallback scraping lama sebelum penggantinya terbukti berfungsi.
+- Jangan mengubah fitur yang tidak berkaitan dengan pekerjaan ini.
+- Jika perlu mengubah "movie-source", jelaskan alasannya dan pastikan perubahan tetap kompatibel dengan desain extension terbaru.
 
-Nama dan pembagian file dapat disesuaikan berdasarkan hasil analisis source yang tersedia.
+Target akhir: Aplikasi Android menjadi generic extension client yang sepenuhnya mengikuti arsitektur terbaru "movie-source". Semua source, dependency, dan shared extractor dikelola dari repository "movie-source", sedangkan aplikasi Android hanya bertanggung jawab atas runtime execution, UI, penyimpanan lokal, dan playback.
 
-Ketentuan Extractor
-
-- Setiap extractor menangani satu jenis provider atau format stream.
-- Extractor ditulis menggunakan JavaScript.
-- Extractor harus independen dari extension tertentu.
-- Satu extractor dapat digunakan oleh banyak extension.
-- Mendukung konfigurasi dan parameter yang diperlukan.
-- Menghasilkan format stream normalized yang konsisten.
-- Memiliki error handling dan logging yang jelas.
-- Hindari duplikasi parser atau resolver.
-
-Prioritaskan identifikasi dan migrasi parser yang sudah tersedia di project. Contohnya OK.ru, Dailymotion, P2P, dan provider lainnya jika memang ditemukan.
-
-Integrasi Extension dengan Extractor
-
-Extension tidak perlu mengimplementasikan ulang parser stream.
-
-Buat mekanisme agar extension bisa memanggil shared extractor melalui API atau registry.
-
-Contoh konseptual:
-
-export async function getStream(url) {
-  return extractors.resolve(url);
-}
-
-Registry harus bisa mengenali extractor yang sesuai berdasarkan provider atau URL.
-
-Jika sebuah source memiliki stream custom yang tidak didukung shared extractor, extension tetap boleh memiliki implementasi khusus.
-
-Dependency dan Runtime
-
-Analisis bagaimana aplikasi Android saat ini memuat module JavaScript.
-
-Pastikan shared extractor juga dapat digunakan oleh extension melalui mekanisme dependency/import yang kompatibel dengan "RemoteSourceRuntime".
-
-Jangan mengasumsikan bahwa native JavaScript import atau Node.js module system otomatis tersedia di WebView.
-
-Jika diperlukan, rancang dependency bundling atau module loading yang sesuai dengan runtime saat ini.
-
-Pastikan seluruh module yang dibutuhkan tetap terdaftar, diverifikasi SHA-256, dan dapat di-cache dengan aman.
-
-Pengujian
-
-- Uji setiap extractor secara independen.
-- Uji pemanggilan extractor dari beberapa extension.
-- Pastikan satu extractor dapat digunakan oleh lebih dari satu source.
-- Uji URL provider yang valid dan tidak valid.
-- Pastikan kegagalan extractor tidak merusak extension lainnya.
-
-Prinsip utama: Extension bertanggung jawab atas katalog dan navigasi website, sedangkan Extractor bertanggung jawab atas resolusi stream dari provider eksternal. Keduanya merupakan komponen terpisah yang bisa digunakan kembali.
+Di akhir pekerjaan, berikan laporan file yang diubah, masalah yang ditemukan, hasil testing, dan fitur yang berhasil diverifikasi.
