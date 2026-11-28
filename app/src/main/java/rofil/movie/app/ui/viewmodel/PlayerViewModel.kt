@@ -62,6 +62,7 @@ class PlayerViewModel(
     private val appScope: CoroutineScope,
     private val slug: String,
     initialSourceIndex: Int,
+    private val autoPlay: Boolean = true,
 ) : ViewModel() {
 
     private val appContext = context.applicationContext
@@ -259,7 +260,7 @@ class PlayerViewModel(
         val mediaSource = mediaSourceFactory.createMediaSource(item)
         player.setMediaSource(mediaSource)
         player.prepare()
-        player.playWhenReady = true
+        player.playWhenReady = autoPlay
         _state.value = _state.value.copy(
             buffering = true,
             positionMs = resumePositionMs,

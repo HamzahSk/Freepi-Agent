@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -16,13 +17,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -38,6 +42,10 @@ import rofil.movie.app.ui.screens.HomeScreen
 import rofil.movie.app.ui.screens.LibraryScreen
 import rofil.movie.app.ui.screens.PlayerScreen
 import rofil.movie.app.ui.screens.SearchScreen
+import rofil.movie.app.ui.screens.RemoteSourceOption
+import rofil.movie.app.ui.screens.SettingsScreen
+import rofil.movie.app.data.PlaybackPreferences
+import rofil.movie.app.data.SourceSelection
 import rofil.movie.app.ui.theme.Background
 import rofil.movie.app.ui.theme.Primary
 import rofil.movie.app.ui.theme.TextSecondary
@@ -47,11 +55,16 @@ import rofil.movie.app.ui.viewmodel.HomeViewModel
 import rofil.movie.app.ui.viewmodel.LibraryViewModel
 import rofil.movie.app.ui.viewmodel.PlayerViewModel
 import rofil.movie.app.ui.viewmodel.SearchViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 private object Routes {
     const val HOME = "home"
     const val SEARCH = "search"
-    const val LIBRARY = "library"
+    const val FAVORITE = "favorite"
+    const val SETTINGS = "settings"
     const val DETAIL = "detail/{slug}"
     const val BROWSE = "browse?path={path}&title={title}"
     const val PLAYER = "player/{slug}?source={source}"
@@ -63,9 +76,37 @@ fun AppRoot() {
     val container = rememberContainer()
     val context = LocalContext.current
     var selectedSource by remember(container) { mutableStateOf(container.sourceSelection.selectedId) }
+    val playbackPreferences = remember(context) { PlaybackPreferences(context) }
+    var autoPlayInline by remember(context) { mutableStateOf(playbackPreferences.autoPlayInline) }
+    var remoteSources by remember {
+        mutableStateOf(
+            listOf(
+                RemoteSourceOption(SourceSelection.LK21, "LK21"),
+                RemoteSourceOption(SourceSelection.MOVIEBOX, "MovieBox"),
+            )
+        )
+    }
+    var manifestStatus by remember { mutableStateOf("Manifest not synced in this session") }
+    var syncingManifest by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    fun syncManifest(force: Boolean = true) {
+        if (syncingManifest) return
+        scope.launch {
+            syncingManifest = true
+            runCatching {
+                withContext(Dispatchers.IO) { container.moduleStore.refresh(force) }
+            }.onSuccess { manifest ->
+                remoteSources = manifestSources(manifest)
+                manifestStatus = "Synced v${manifest.optString("version", "1")} · ${remoteSources.size} sources"
+            }.onFailure { error ->
+                manifestStatus = "Using cached registry · ${error.message ?: "sync unavailable"}"
+            }
+            syncingManifest = false
+        }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val showBottomBar = currentRoute in setOf(Routes.HOME, Routes.SEARCH, Routes.LIBRARY)
+    val showBottomBar = currentRoute in setOf(Routes.HOME, Routes.FAVORITE, Routes.SETTINGS)
     val isPlayer = currentRoute == Routes.PLAYER
 
     Scaffold(
@@ -75,7 +116,7 @@ fun AppRoot() {
         else ScaffoldDefaults.contentWindowInsets,
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar(containerColor = Color(0xFF111118)) {
+                NavigationBar(containerColor = Color(0xFF111118), tonalElevation = 8.dp) {
                     NavigationBarItem(
                         selected = currentRoute == Routes.HOME,
                         onClick = { navigateTab(navController, Routes.HOME) },
@@ -84,17 +125,17 @@ fun AppRoot() {
                         colors = navItemColors(),
                     )
                     NavigationBarItem(
-                        selected = currentRoute == Routes.SEARCH,
-                        onClick = { navigateTab(navController, Routes.SEARCH) },
-                        icon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
-                        label = { Text("Search") },
+                        selected = currentRoute == Routes.FAVORITE,
+                        onClick = { navigateTab(navController, Routes.FAVORITE) },
+                        icon = { Icon(Icons.Filled.Favorite, contentDescription = "Favorite") },
+                        label = { Text("Favorite") },
                         colors = navItemColors(),
                     )
                     NavigationBarItem(
-                        selected = currentRoute == Routes.LIBRARY,
-                        onClick = { navigateTab(navController, Routes.LIBRARY) },
-                        icon = { Icon(Icons.Filled.Favorite, contentDescription = "Library") },
-                        label = { Text("Library") },
+                        selected = currentRoute == Routes.SETTINGS,
+                        onClick = { navigateTab(navController, Routes.SETTINGS) },
+                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
+                        label = { Text("Setting") },
                         colors = navItemColors(),
                     )
                 }
@@ -114,15 +155,17 @@ fun AppRoot() {
                 )
                 val state by vm.state.collectAsStateWithLifecycleCompat()
                 val continueWatching by vm.continueWatching.collectAsStateWithLifecycleCompat()
+                LaunchedEffect(selectedSource) { vm.refresh() }
                 HomeScreen(
                     state = state,
                     continueWatching = continueWatching,
                     onMovieClick = { navController.navigateDetail(it.slug) },
                     onResume = { navController.navigateDetail(it.slug) },
                     onBrowse = { path, title -> navController.navigateBrowse(path, title) },
-                    onSearch = { navigateTab(navController, Routes.SEARCH) },
+                    onSearch = { navController.navigate(Routes.SEARCH) },
                     onRefresh = vm::refresh,
                     sourceId = selectedSource,
+                    sourceOptions = remoteSources.map { it.id to it.name },
                     onSourceSelect = { sourceId ->
                         if (sourceId != selectedSource) {
                             container.repository.selectSource(sourceId)
@@ -147,7 +190,7 @@ fun AppRoot() {
                 )
             }
 
-            composable(Routes.LIBRARY) {
+            composable(Routes.FAVORITE) {
                 val vm: LibraryViewModel = viewModel(
                     factory = viewModelFactory { LibraryViewModel(container.repository) }
                 )
@@ -158,6 +201,33 @@ fun AppRoot() {
                     onRemoveHistory = vm::removeHistory,
                     onRemoveFavorite = vm::removeFavorite,
                     onClearHistory = vm::clearHistory,
+                )
+            }
+
+            composable(Routes.SETTINGS) {
+                SettingsScreen(
+                    selectedSource = selectedSource,
+                    sources = remoteSources,
+                    manifestStatus = manifestStatus,
+                    syncing = syncingManifest,
+                    autoPlayInline = autoPlayInline,
+                    onSourceSelect = { sourceId ->
+                        if (sourceId != selectedSource) {
+                            container.repository.selectSource(sourceId)
+                            selectedSource = sourceId
+                        }
+                    },
+                    onSync = { syncManifest(true) },
+                    onClearCache = {
+                        container.repository.clearCaches()
+                        container.remoteRuntime.reset()
+                        container.moduleStore.clear()
+                        manifestStatus = "Cache cleared · sync the registry to reconnect"
+                    },
+                    onAutoPlayChange = {
+                        autoPlayInline = it
+                        playbackPreferences.autoPlayInline = it
+                    },
                 )
             }
 
@@ -172,6 +242,20 @@ fun AppRoot() {
                 )
                 val state by vm.state.collectAsStateWithLifecycleCompat()
                 val favorite by vm.isFavorite.collectAsStateWithLifecycleCompat()
+                val inlinePlayer: PlayerViewModel = viewModel(
+                    key = "inline-player:$slug",
+                    factory = viewModelFactory {
+                        PlayerViewModel(
+                            context = context,
+                            repository = container.repository,
+                            okHttpClient = container.client.playerHttpClient(),
+                            appScope = container.appScope,
+                            slug = slug,
+                            initialSourceIndex = 0,
+                            autoPlay = autoPlayInline,
+                        )
+                    },
+                )
                 DetailScreen(
                     state = state,
                     isFavorite = favorite,
@@ -184,6 +268,7 @@ fun AppRoot() {
                     onToggleFavorite = vm::toggleFavorite,
                     onRetry = { vm.load(forceRefresh = true) },
                     onRemoveHistory = vm::removeFromHistory,
+                    inlinePlayer = inlinePlayer,
                 )
             }
 
@@ -233,6 +318,7 @@ fun AppRoot() {
                             appScope = container.appScope,
                             slug = slug,
                             initialSourceIndex = source,
+                            autoPlay = true,
                         )
                     },
                 )
@@ -242,6 +328,23 @@ fun AppRoot() {
                 )
             }
         }
+    }
+}
+
+private fun manifestSources(manifest: JSONObject): List<RemoteSourceOption> {
+    val sources = manifest.optJSONArray("sources") ?: return listOf(
+        RemoteSourceOption(SourceSelection.LK21, "LK21"),
+        RemoteSourceOption(SourceSelection.MOVIEBOX, "MovieBox"),
+    )
+    return (0 until sources.length()).mapNotNull { index ->
+        val item = sources.optJSONObject(index) ?: return@mapNotNull null
+        val id = item.optString("id").takeIf { it in SourceSelection.SOURCE_IDS } ?: return@mapNotNull null
+        RemoteSourceOption(id, item.optString("name").ifBlank { id.replaceFirstChar(Char::uppercase) })
+    }.ifEmpty {
+        listOf(
+            RemoteSourceOption(SourceSelection.LK21, "LK21"),
+            RemoteSourceOption(SourceSelection.MOVIEBOX, "MovieBox"),
+        )
     }
 }
 

@@ -1,6 +1,8 @@
 package rofil.movie.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,6 +59,7 @@ import rofil.movie.app.ui.components.MovieRowSection
 import rofil.movie.app.ui.components.SectionHeader
 import rofil.movie.app.ui.theme.Accent
 import rofil.movie.app.ui.theme.Primary
+import rofil.movie.app.ui.theme.SurfaceGlass
 import rofil.movie.app.ui.theme.TextSecondary
 import rofil.movie.app.ui.viewmodel.HomeUiState
 
@@ -71,10 +74,11 @@ fun HomeScreen(
     onRefresh: () -> Unit,
     sourceId: String = "lk21",
     onSourceSelect: (String) -> Unit = {},
+    sourceOptions: List<Pair<String, String>> = listOf("lk21" to "LK21", "moviebox" to "MovieBox"),
 ) {
     when {
         state.loading -> HomeSkeleton(
-            header = { BrandBar(false, onSearch, onRefresh, sourceId, onSourceSelect) },
+            header = { BrandBar(false, onSearch, onRefresh, sourceId, onSourceSelect, sourceOptions) },
             continueWatching = {
                 if (continueWatching.isNotEmpty()) {
                     SectionHeader("Continue watching")
@@ -99,6 +103,7 @@ fun HomeScreen(
             onRefresh = onRefresh,
             sourceId = sourceId,
             onSourceSelect = onSourceSelect,
+            sourceOptions = sourceOptions,
         )
     }
 }
@@ -115,6 +120,7 @@ private fun HomeContent(
     onRefresh: () -> Unit,
     sourceId: String,
     onSourceSelect: (String) -> Unit,
+    sourceOptions: List<Pair<String, String>>,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -127,6 +133,7 @@ private fun HomeContent(
                 onRefresh = onRefresh,
                 sourceId = sourceId,
                 onSourceSelect = onSourceSelect,
+                sourceOptions = sourceOptions,
             )
         }
         data.featured.firstOrNull()?.let { featured ->
@@ -225,7 +232,7 @@ private fun HomeContent(
         }
         item {
             Text(
-                text = "Catalog data is provided by lk21official. Freepi Stream is an independent player and is not affiliated with the source.",
+                text = "Catalog and playback data are provided by the active remote source. Freepi is an independent client.",
                 style = MaterialTheme.typography.labelSmall,
                 color = TextSecondary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
@@ -241,11 +248,14 @@ private fun BrandBar(
     onRefresh: () -> Unit,
     sourceId: String,
     onSourceSelect: (String) -> Unit,
+    sourceOptions: List<Pair<String, String>>,
 ) {
     val expanded = remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(SurfaceGlass, RoundedCornerShape(18.dp))
+            .border(BorderStroke(1.dp, rofil.movie.app.ui.theme.Outline.copy(alpha = 0.65f)), RoundedCornerShape(18.dp))
             .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -272,7 +282,7 @@ private fun BrandBar(
                 letterSpacing = 2.sp,
             )
             Text(
-                if (sourceId == "moviebox") "MOVIEBOX" else "LK21",
+                sourceId.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
                 color = Primary,
                 letterSpacing = 3.sp,
@@ -286,8 +296,9 @@ private fun BrandBar(
                 modifier = Modifier.clickable { expanded.value = true }.padding(horizontal = 8.dp, vertical = 10.dp),
             )
             DropdownMenu(expanded = expanded.value, onDismissRequest = { expanded.value = false }) {
-                DropdownMenuItem(text = { Text("LK21") }, onClick = { expanded.value = false; onSourceSelect("lk21") })
-                DropdownMenuItem(text = { Text("MovieBox") }, onClick = { expanded.value = false; onSourceSelect("moviebox") })
+                sourceOptions.forEach { (id, name) ->
+                    DropdownMenuItem(text = { Text(name) }, onClick = { expanded.value = false; onSourceSelect(id) })
+                }
             }
         }
         if (refreshing) {

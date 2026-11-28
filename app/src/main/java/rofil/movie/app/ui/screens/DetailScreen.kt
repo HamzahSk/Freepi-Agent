@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -32,6 +35,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,6 +55,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import rofil.movie.app.data.model.MovieCard
@@ -68,6 +77,7 @@ import rofil.movie.app.ui.theme.Primary
 import rofil.movie.app.ui.theme.SurfaceElevated
 import rofil.movie.app.ui.theme.TextSecondary
 import rofil.movie.app.ui.viewmodel.DetailUiState
+import rofil.movie.app.ui.viewmodel.PlayerViewModel
 
 @Composable
 fun DetailScreen(
@@ -80,6 +90,7 @@ fun DetailScreen(
     onToggleFavorite: () -> Unit,
     onRetry: () -> Unit,
     onRemoveHistory: () -> Unit,
+    inlinePlayer: PlayerViewModel? = null,
 ) {
     when {
         state.loading -> DetailSkeleton {
@@ -101,6 +112,7 @@ fun DetailScreen(
             onOpenEpisode = onOpenEpisode,
             onToggleFavorite = onToggleFavorite,
             onRemoveHistory = onRemoveHistory,
+            inlinePlayer = inlinePlayer,
         )
     }
 }
@@ -120,14 +132,62 @@ private fun DetailContent(
     onOpenEpisode: (String) -> Unit,
     onToggleFavorite: () -> Unit,
     onRemoveHistory: () -> Unit,
+    inlinePlayer: PlayerViewModel?,
 ) {
     val uriHandler = LocalUriHandler.current
     var synopsisExpanded by remember { mutableStateOf(false) }
+    var infoExpanded by remember { mutableStateOf(true) }
+    val inlineStateState = if (inlinePlayer != null) {
+        inlinePlayer.state.collectAsStateWithLifecycle()
+    } else {
+        remember { androidx.compose.runtime.mutableStateOf(rofil.movie.app.ui.viewmodel.PlayerUiState()) }
+    }
+    val inlineState by inlineStateState
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 28.dp),
     ) {
+        if (inlinePlayer != null) {
+            item {
+                InlinePlayerSurface(
+                    viewModel = inlinePlayer,
+                    state = inlineState,
+                    onFullscreen = { onPlay(detail, inlineState.sourceIndex) },
+                )
+            }
+        }
+        if (inlinePlayer != null) {
+            item {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(detail.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            if (inlineState.loadingDetail) "Preparing providers…"
+                            else inlineState.resolved?.label ?: "Inline player",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary,
+                        )
+                    }
+                    IconButton(onClick = onToggleFavorite) {
+                        Icon(
+                            if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                            contentDescription = if (isFavorite) "Remove favorite" else "Add favorite",
+                            tint = if (isFavorite) Primary else TextSecondary,
+                        )
+                    }
+                    TextButton(onClick = { infoExpanded = !infoExpanded }) {
+                        Text(if (infoExpanded) "Hide info" else "Show info", color = Primary)
+                    }
+                }
+            }
+        }
+        if (inlinePlayer == null || infoExpanded) {
         item {
             Box(
                 Modifier
@@ -346,7 +406,7 @@ private fun DetailContent(
             items(detail.sources.size) { index ->
                 val source = detail.sources[index]
                 Surface(
-                    onClick = { onPlay(detail, index) },
+                    onClick = { inlinePlayer?.selectSource(index) ?: onPlay(detail, index) },
                     color = SurfaceElevated,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
@@ -448,6 +508,113 @@ private fun DetailContent(
                     title = "More like this",
                     movies = detail.related,
                     onMovieClick = onMovieClick,
+                )
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun InlinePlayerSurface(
+    viewModel: PlayerViewModel,
+    state: rofil.movie.app.ui.viewmodel.PlayerUiState,
+    onFullscreen: () -> Unit,
+) {
+    val duration = state.durationMs.coerceAtLeast(1L)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(Color.Black),
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f),
+        ) {
+            AndroidView(
+                factory = { context ->
+                    PlayerView(context).apply {
+                        player = viewModel.player
+                        useController = false
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        setKeepContentOnPlayerReset(true)
+                    }
+                },
+                update = { it.player = viewModel.player },
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0x99000000), Color.Transparent, Color(0xCC000000)),
+                        )
+                    ),
+            )
+            Row(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    state.resolved?.provider ?: if (state.loadingDetail) "Loading player" else "Provider",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onFullscreen) {
+                    Icon(Icons.Filled.Fullscreen, contentDescription = "Open fullscreen player", tint = Color.White)
+                }
+            }
+            if (state.loadingDetail || state.resolving || state.buffering) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Primary, strokeWidth = 3.dp)
+                }
+            }
+            if (state.error != null && !state.resolving) {
+                Column(
+                    Modifier.align(Alignment.Center).padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("Playback unavailable", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                    Text(
+                        state.error,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    TextButton(onClick = viewModel::retry) { Text("Retry", color = Primary) }
+                }
+            }
+            if (state.resolved != null && state.error == null) {
+                IconButton(
+                    onClick = viewModel::togglePlay,
+                    modifier = Modifier.align(Alignment.Center),
+                ) {
+                    Icon(
+                        if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        tint = Color.White,
+                        modifier = Modifier.size(42.dp),
+                    )
+                }
+            }
+            if (state.resolved != null) {
+                Slider(
+                    value = state.positionMs.coerceIn(0, duration).toFloat(),
+                    onValueChange = { viewModel.seekTo(it.toLong()) },
+                    valueRange = 0f..duration.toFloat(),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Primary,
+                        activeTrackColor = Primary,
+                        inactiveTrackColor = Color(0x66FFFFFF),
+                    ),
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 8.dp),
                 )
             }
         }

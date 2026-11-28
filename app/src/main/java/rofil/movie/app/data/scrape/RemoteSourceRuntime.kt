@@ -28,6 +28,16 @@ class RemoteSourceRuntime(private val context: Context, val store: SourceModuleS
     private var pending: CompletableDeferred<JSONObject>? = null
     private var requestId = ""
 
+    /** Drop the in-memory WebView bundle after a user-requested cache reset. */
+    fun reset() {
+        webView?.destroy()
+        webView = null
+        installed = ""
+        pending?.completeExceptionally(IllegalStateException("Remote runtime reset"))
+        pending = null
+        requestId = ""
+    }
+
     private inner class Bridge {
         @JavascriptInterface fun request(raw: String): String = try {
             val value = JSONObject(raw)

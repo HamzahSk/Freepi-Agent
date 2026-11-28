@@ -1,4 +1,0 @@
-HTTP/2 200
-content-type: application/json
-
-{"embedUrl":"https://playcdn.de/abc123"}

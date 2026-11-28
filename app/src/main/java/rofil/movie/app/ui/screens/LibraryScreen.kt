@@ -61,7 +61,7 @@ fun LibraryScreen(
     onRemoveFavorite: (String) -> Unit,
     onClearHistory: () -> Unit,
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(2) }
     val tabs = listOf("Continue", "History", "Favorites", "Completed")
     var confirmClear by remember { mutableStateOf(false) }
 
@@ -73,7 +73,7 @@ fun LibraryScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "My Library",
+                "Favorites",
                 style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f),

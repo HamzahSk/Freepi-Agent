@@ -15,6 +15,15 @@ class SourceModuleStore(
 ) {
     @Volatile private var current: JSONObject? = null
     private var checkedAt = 0L
+
+    /** Remove the active manifest and hash-addressed modules. The next runtime
+     * request will rebuild a verified snapshot from movie-source. */
+    @Synchronized fun clear() {
+        directory.deleteRecursively()
+        directory.mkdirs()
+        current = null
+        checkedAt = 0L
+    }
     @Synchronized fun refresh(force: Boolean = false): JSONObject {
         if (!force && System.currentTimeMillis() - checkedAt < 300_000) current?.let { return it }
         val old = current ?: runCatching { JSONObject(File(directory, "active.json").readText()).also(::validate) }.getOrNull()

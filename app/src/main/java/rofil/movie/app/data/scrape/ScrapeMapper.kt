@@ -85,9 +85,9 @@ class ScrapeMapper {
             metaValue(meta, "Poster").orEmpty(),
         )?.let { absolutize(it, pageUrl) }
 
-        val durationText = data.optString("durationText")
+        val durationText = cleanOptional(data.optString("durationText")).orEmpty()
             .ifBlank { metaValue(meta, "Durasi").orEmpty() }
-            .ifBlank { data.optString("runtime") }
+            .ifBlank { cleanOptional(data.optString("runtime")).orEmpty() }
         val durationMs = parseDuration(durationText)
             ?: parseIsoDuration(ld?.optString("duration"))
             ?: parseDuration(infoTags.firstOrNull { looksLikeDuration(it) })
@@ -142,10 +142,10 @@ class ScrapeMapper {
             )?.value.orEmpty()
         }.takeIf { it.isNotBlank() }
 
-        val quality = data.optString("quality")
+        val quality = cleanOptional(data.optString("quality")).orEmpty()
             .ifBlank { split(metaValue(meta, "Kualitas", "Quality")).firstOrNull().orEmpty() }
             .ifBlank { infoTags.firstOrNull(::looksLikeQuality).orEmpty() }
-            .ifBlank { ld?.optString("contentRating").orEmpty() }
+            .ifBlank { cleanOptional(ld?.optString("contentRating")).orEmpty() }
             .takeIf { it.isNotBlank() }
 
         val sources = sources(data.optJSONArray("sources"), pageUrl)
@@ -283,8 +283,8 @@ class ScrapeMapper {
                 url = url,
                 poster = poster,
                 rating = firstNumber(item.optString("rating")),
-                quality = item.optString("quality").trim().takeIf { it.isNotBlank() },
-                duration = item.optString("duration").trim().takeIf { it.isNotBlank() },
+                quality = cleanOptional(item.optString("quality")),
+                duration = cleanOptional(item.optString("duration")),
                 genres = item.optJSONArray("genres")?.toStringList().orEmpty().take(5),
                 year = year,
             )
@@ -410,6 +410,11 @@ class ScrapeMapper {
     private fun firstNumber(raw: String?): String? {
         if (raw.isNullOrBlank()) return null
         return Regex("""\d+(?:[.,]\d+)?""").find(raw)?.value
+    }
+
+    /** Source pages occasionally serialize absent values as literal NULL/N/A. */
+    private fun cleanOptional(raw: String?): String? = raw?.trim()?.takeIf {
+        it.isNotBlank() && it.lowercase(Locale.ROOT) !in setOf("null", "n/a", "na", "none", "unknown", "-")
     }
 
     private fun firstUrl(vararg values: String): String? =
